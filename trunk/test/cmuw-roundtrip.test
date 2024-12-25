@@ -1,0 +1,6 @@
+#! /bin/sh
+# This script tests: pbmtocmuwm cmuwmtopbm
+# Also requires:
+
+echo "Should print 281226646 481, cksum of maze.pbm"
+pbmtocmuwm maze.pbm | cmuwmtopbm | cksum

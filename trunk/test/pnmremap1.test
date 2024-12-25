@@ -1,0 +1,64 @@
+#! /bin/sh
+# This script tests: pnmremap
+# Also requires: pamseq pamtopnm
+
+tmpdir=${tmpdir:-/tmp}
+palette=${tmpdir}/palette
+#palette255=${tmpdir}/palette255
+
+pamseq 3 5 -tupletype=RGB | pamtopnm > ${palette}
+#pamdepth 255 ${palette} > ${palette255}
+
+# Test 1. Floyd-Steinberg
+# This fails with older versions of Netpbm and x86-64.
+# May also fail on other non-Intel architectures.
+# v. 10.59.2
+# x86-32: 2667816854 101482
+# x86-64: 3602410851 101482
+
+pnmremap -mapfile=${palette} -floyd -norandom \
+ testimg.ppm | cksum
+
+#pnmremap -mapfile=${palette255} -floyd -norandom \
+# testimg.ppm | cksum
+
+rm ${palette} # ${palette255}
+
+echo 1>&2
+echo "Invalid command-line arguments." 1>&2
+echo "Error messages should appear below the line." 1>&2
+echo "-----------------------------------------------------------" 1>&2
+
+tmpdir=${tmpdir:-/tmp}
+test_out=${tmpdir}/test_out
+
+pnmremap -mapfile=/dev/null testimg.ppm > ${test_out} || \
+  printf "Expected failure 1 "
+  test -s ${test_out} && echo "unexpected output" || echo "(no output)"
+  rm -f ${test_out}
+
+pnmremap -mapfile=/dev/zero testimg.ppm > ${test_out} || \
+  printf "Expected failure 2 "
+  test -s ${test_out} && echo "unexpected output" || echo "(no output)"
+  rm -f ${test_out}
+
+pnmremap testimg.ppm                    > ${test_out} || \
+  printf "Expected failure 3 "
+  test -s ${test_out} && echo "unexpected output" || echo "(no output)"
+  rm -f ${test_out}
+
+pnmremap -fs -nofs testimg.ppm          > ${test_out} || \
+  printf "Expected failure 4 "
+  test -s ${test_out} && echo "unexpected output" || echo "(no output)"
+  rm -f ${test_out}
+
+pnmremap -mapfile=testgrid.pbm -missingcolor=rgb:00/ff/00 testimg.ppm \
+ > ${test_out} || \
+  printf "Expected failure 5 "
+  test -s ${test_out} && echo "unexpected output" || echo "(no output)"
+  rm -f ${test_out}
+
+pnmremap -mapfile=testgrid.pbm -firstisdefault testimg.ppm > ${test_out} || \
+  printf "Expected failure 6 "
+  test -s ${test_out} && echo "unexpected output" || echo "(no output)"
+  rm -f ${test_out}

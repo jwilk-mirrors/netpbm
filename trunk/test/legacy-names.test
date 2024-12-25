@@ -1,0 +1,139 @@
+#! /bin/bash
+# Tests whether the executable files listed below are in place.
+
+# We test with the methods used in all-in-place.test.
+# The sole exception is hpcdtoppm.  We just confirm that it exists.
+
+# Failure message
+## If all-in-place.test succeeds and this test fails, a likely cause is a
+## problem with symbolic links.
+##
+## Important: This test checks obsoleted names.
+## Programs here do not appear in other tests.
+##
+## Programs here are wrapper scripts provided for backward compatibility.
+## The newer replacement program may be the cause of any failure reported.
+##
+## If you run the "make test-install" on an older version, some executables
+## may be reported as missing because of missing features.
+
+
+# Skip this test if CHECK_TYPE = tree
+
+if [ ${CHECK_TYPE} = tree ]
+  then echo "Skipping." 1>&2
+  exit 80;
+fi
+
+
+function testExitStatus () {
+
+# This function takes 3 positional parameters:
+#   $1: filename
+#   $2: expected exit status   (In some cases we expect error.)
+#   $3: actual exit status
+
+    case $3 in
+      126) if [ ! -x $1 ]
+             then echo $1": NOT EXECUTABLE";
+             else echo $1": ERROR: "$3;    echo $1": error: "$3 1>&2 ;
+           fi ;;
+      127) type -p $1 > /dev/null
+           if [ $? -ne 0 ]
+             then echo $1": NO SUCH FILE";
+             else echo $1": ERROR: "$3;    echo $1": error: "$3 1>&2 ;
+           fi ;;
+      88)  echo $1": NO SUCH FILE" ;;
+      $2)  echo $1": ok" ;;
+      *)   echo $1": ERROR: "$3;    echo $1": error: "$3 1>&2 ;;
+    esac
+
+}
+
+
+# Test programs which have the --version flag.
+# See showVersion() in lib/libpm.c for the standard version announcement.
+
+ordinary_testprogs="\
+  bmptoppm \
+  gemtopbm \
+  icontopbm \
+  pamfixtrunc \
+  pamrgbatopng \
+  pbmtoicon \
+  pbmtox10bm \
+  pgmcrater \
+  pgmedge \
+  pgmnorm \
+  pgmoil \
+  pgmslice \
+  pngtopnm \
+  pnmarith \
+  pnmcat \
+  pnmcomp \
+  pnmcut \
+  pnmdepth \
+  pnmenlarge \
+  pnmfile \
+  pnmflip \
+  pnminterp \
+  pnmnoraw \
+  pnmscale \
+  pnmsplit \
+  pnmtofits \
+  pnmtoplainpnm \
+  pnmtopnm \
+  pnmtotiff \
+  ppmbrighten \
+  ppmcolors \
+  ppmnorm \
+  ppmquant \
+  ppmquantall \
+  ppmtogif \
+  ppmtojpeg \
+  ppmtomap \
+  ppmtotga \
+  ppmtouil \
+"
+
+# Switch to control output from "program --version"
+# See comments in all-in-place.test
+
+if [ ${CHECK_TYPE} = "install" ]
+  then grepOption[1]="" ;   # Output --version message
+  else grepOption[0]="-v" ; # Suppress output
+fi
+
+for i in $ordinary_testprogs
+  do
+    # Stub out programs that aren't built.
+    Available-Testprog "$i"
+      if [ $? = 1 ]; then
+      echo "$i: program was not built" 1>&2
+      echo "$i: ok"
+      continue
+      fi
+
+    $i --version < /dev/null 2>&1 | \
+    egrep -v -e "fiascotopnm" -e \
+    ": ((BSD|SYSV|MSDOS|AMIGA) defined|RGB_?ENV=)" | \
+    egrep ${grepOption[$grepSwitch]} -e \
+    ": (Using lib(net)?pbm|(Built (by|at)|Compiled ))" 1>&2;
+    # See showVersion() in lib/libpm.c for the above regular expressions.
+  
+    exitStatus=${PIPESTATUS[0]}
+    testExitStatus $i 0 ${exitStatus}
+  done
+
+
+
+# Test hpcdtoppm, pcdovtoppm and pcdindex.  Simply confirm their existence.
+
+type -p hpcdtoppm > /dev/null
+testExitStatus hpcdtoppm 0 $?
+
+type -p pcdovtoppm > /dev/null
+testExitStatus pcdovtoppm 0 $?
+
+type -p pcdindex > /dev/null
+testExitStatus pcdindex 0 $?

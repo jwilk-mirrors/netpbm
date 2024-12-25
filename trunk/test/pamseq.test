@@ -1,0 +1,21 @@
+#! /bin/sh
+# This script tests: pamseq
+# Also requires:
+
+echo "Test 1"
+
+pamseq 1 255 | cksum
+
+echo "Test Invalid"
+
+. ./test-invalid.inc
+
+invCmd "pamseq 1"
+invCmd "pamseq 0 255"
+invCmd "pamseq 3 0"
+
+# Tupletype string length=256
+c64="0123456789012345678901234567890123456789012345678901234567890123"
+c256=${c64}${c64}${c64}${c64}
+
+invCmd "pamseq -tupletype=${c256} 3 15"

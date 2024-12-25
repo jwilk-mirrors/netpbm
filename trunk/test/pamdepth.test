@@ -1,0 +1,30 @@
+#! /bin/bash
+# This script tests: pamdepth
+# Also requires: pbmtopgm pamtopam pamfile
+
+tmpdir=${tmpdir:-/tmp}
+test_out=${tmpdir}/test_out
+
+# Test 1
+echo "Test 1"
+pamdepth 1 testgrid.pbm | tee ${test_out} | cksum
+  cat ${test_out} | pamfile -machine
+pbmtopgm 1 1 testgrid.pbm | pamdepth 1 | tee ${test_out} | cksum
+  cat ${test_out} | pamfile -machine
+pamdepth 1 testgrid.pbm | pamtopam | tee ${test_out} | cksum
+  cat ${test_out} | pamfile -machine
+pbmtopgm 1 1 testgrid.pbm | pamtopam | pamdepth 1 | tee ${test_out} | cksum
+  cat ${test_out} | pamfile -machine
+
+# Test 2
+echo "Test 2"
+pamdepth 255 testimg.ppm | cmp -s - testimg.ppm
+  echo ${PIPESTATUS[@]} ":" $?
+
+# Test Invalid
+echo "Test Invalid"
+
+. ./test-invalid.inc
+
+invCmd "pamdepth 0 testgrid.pbm"
+invCmd "pamdepth 65536 testimg.ppm"

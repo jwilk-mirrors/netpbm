@@ -1,0 +1,60 @@
+#! /bin/sh
+# This script tests: pnmindex
+# Also requires: pamcat pamscale pbmtext pnmcolormap pnmindex
+# Also requires: pnminvert pnmquant pnmremap
+
+tmpdir=${tmpdir:-/tmp}
+pnmindex256_ppm=${tmpdir}/pnmindex256.ppm
+
+echo "Test 1. Should print 3391481002 889"
+pnmindex maze.pbm | cksum
+
+echo "Test 2. Should print 1998876959 5290 twice"
+pnmindex maze.pbm maze.pbm maze.pbm maze.pbm maze.pbm maze.pbm | cksum
+pnmindex -noquant maze.pbm maze.pbm maze.pbm maze.pbm maze.pbm maze.pbm | cksum
+
+echo "Test 3. Should print 3099638253 5290"
+pnmindex -black maze.pbm maze.pbm maze.pbm maze.pbm maze.pbm maze.pbm | cksum
+
+echo "Test 4. Should print 1397700642 3160"
+pnmindex -size 20 -across=3 testgrid.pbm testgrid.pbm testgrid.pbm \
+         testgrid.pbm testgrid.pbm testgrid.pbm | cksum
+
+echo "Test 5. Should print 243472565 28514"
+pnmindex -noquant testimg.ppm | cksum
+
+echo "Test 6. Should print 801388440 100455"
+pnmindex -size 50 -across=2 -noquant testimg.ppm testimg.ppm testimg.ppm \
+         testimg.ppm testimg.ppm testimg.ppm | tee ${pnmindex256_ppm} | cksum
+
+echo "Test 7. Should print 256 twice"
+pnmindex testimg.ppm | ppmhist -nomap -noheader | wc -l
+pnmindex -colors 256 testimg.ppm | ppmhist -nomap -noheader | wc -l
+
+echo "Test 8. Should print 100 twice"
+pnmindex -colors 100 testimg.ppm | ppmhist -nomap -noheader | wc -l
+pnmindex -colors 100 testimg.ppm testimg.ppm | ppmhist -nomap -noheader | wc -l
+
+
+echo "Test 9. Should print match"
+pnmindex -size 50 -across=2 -quant -colors=256 testimg.ppm testimg.ppm testimg.ppm \
+         testimg.ppm testimg.ppm testimg.ppm |\
+    pnmpsnr -rgb -target1=41.31 -target2=40.76 -target3=40.71 ${pnmindex256_ppm} -
+
+
+echo "Test Invalid"
+
+. ./test-invalid.inc
+
+invCmd "pnmindex -size -1 testgrid.pbm"
+invCmd "pnmindex -size  0 testgrid.pbm"
+invCmd "pnmindex -size    testgrid.pbm"
+invCmd "pnmindex -across -1 testgrid.pbm"
+invCmd "pnmindex -across  0 testgrid.pbm"
+invCmd "pnmindex -across    testgrid.pbm"
+invCmd "pnmindex -colors -1 testgrid.pbm"
+invCmd "pnmindex -colors  0 testgrid.pbm"
+invCmd "pnmindex -colors    testgrid.pbm"
+invCmd "pnmindex -quant -noquant testgrid.pbm"
+invCmd "pnmindex -colors 100 -noquant testgrid.pbm"
+invCmd "pnmindex"

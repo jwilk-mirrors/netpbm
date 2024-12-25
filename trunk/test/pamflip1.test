@@ -1,0 +1,19 @@
+#! /bin/sh
+# This script tests: pamflip
+# Also requires: pamseq
+
+echo "Test 1.  Should print 1350702313 12336"
+pamseq 3 15 | pamflip -lr | cksum
+
+echo "Test 2.  Should print 1035759697 40048"
+pamseq 4 9 | pamflip -tb | cksum
+
+echo "Test 3.  Should print 217037000 101484"
+pamflip -cw testimg.ppm | cksum
+
+echo "Test 4.  Should print 1178735266 481"
+pamflip -lr maze.pbm | cksum
+
+echo "Test 5.  Should print 2339906255 481"
+pamflip -tb maze.pbm | cksum
+

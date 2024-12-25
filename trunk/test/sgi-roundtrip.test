@@ -1,0 +1,44 @@
+#! /bin/sh
+# This script tests: pnmtosgi sgitopnm
+# Also requires: rgb3toppm pamdepth pamtopnm pgmtopbm
+
+tmpdir=${tmpdir:-/tmp}
+a_sgi=${tmpdir}/a.sgi
+a_red=${tmpdir}/a.red
+a_grn=${tmpdir}/a.grn
+a_blu=${tmpdir}/a.blu
+
+echo "Test 1.  Should produce 1926073387 101484 twice"
+pnmtosgi -rle testimg.ppm | tee ${a_sgi} | sgitopnm  | cksum
+sgitopnm -channel=0  ${a_sgi} > ${a_red}
+sgitopnm -channel=1  ${a_sgi} > ${a_grn}
+sgitopnm -channel=2  ${a_sgi} > ${a_blu}
+rgb3toppm ${a_red} ${a_grn} ${a_blu} | cksum
+rm ${a_sgi} ${a_red} ${a_grn} ${a_blu}
+
+b_sgi=${tmpdir}/b.sgi
+b_red=${tmpdir}/b.red
+b_grn=${tmpdir}/b.grn
+b_blu=${tmpdir}/b.blu
+
+echo "Test 2.  Should produce 1926073387 101484 twice"
+pnmtosgi -verbatim testimg.ppm | tee ${b_sgi} | sgitopnm  | cksum
+sgitopnm -channel=0  ${b_sgi} > ${b_red}
+sgitopnm -channel=1  ${b_sgi} > ${b_grn}
+sgitopnm -channel=2  ${b_sgi} > ${b_blu}
+rgb3toppm ${b_red} ${b_grn} ${b_blu} | cksum
+rm ${b_sgi} ${b_red} ${b_grn} ${b_blu}
+
+echo "Test 3.  Should produce 281226646 481 twice"
+pnmtosgi maze.pbm | sgitopnm | pgmtopbm -threshold -value=0.5 | cksum 
+# Defaults to -rle
+pnmtosgi -verbatim maze.pbm | sgitopnm | \
+  pgmtopbm -threshold -value=0.5 | cksum 
+
+maze_pgm=${tmpdir}/maze.pgm
+
+echo "Test 4. Should produce 4155890407 6741 three times"
+pamdepth 65535 maze.pbm | pamtopnm | tee ${maze_pgm} | cksum
+pnmtosgi -rle ${maze_pgm} | sgitopnm | cksum
+pnmtosgi -verbatim ${maze_pgm} | sgitopnm | cksum
+rm ${maze_pgm}

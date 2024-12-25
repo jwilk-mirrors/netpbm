@@ -1,0 +1,14 @@
+Test 1: Should print 256 256
+256 256
+Test 2: Should print 40 30
+40 30
+Test 3: Should print 90 90
+90 90
+Test Invalid
+Expected failure 1 (no output)
+Expected failure 2 (no output)
+Expected failure 3 (no output)
+Expected failure 4 (no output)
+Expected failure 5 (no output)
+Expected failure 6 (no output)
+Expected failure 7 (no output)

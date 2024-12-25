@@ -1,0 +1,14 @@
+Test 1
+0.00
+inf
+1000.00
+match
+Test 2
+300.00 300.00 300.00
+match
+match
+Test Invalid
+Expected failure 1 (no output)
+Expected failure 2 (no output)
+Expected failure 3 (no output)
+Expected failure 4 (no output)

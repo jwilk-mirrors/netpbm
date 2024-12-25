@@ -1,0 +1,70 @@
+Test 1
+P2 16 1 15 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15  
+P2 16 1 15 3 4 5 6 7 8 9 10 11 12 13 14 15 15 15 15  
+P2 16 1 15 0 0 0 0 1 2 3 4 5 6 7 8 9 10 11 12  
+P2 16 1 15 0 3 6 9 12 15 15 15 15 15 15 15 15 15 15 15  
+P2 16 1 15 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7 8  
+P2 16 1 15 0 1 2 3 4 5 6 6 6 6 6 6 6 6 6 6  
+P2 16 1 15 5 5 5 5 5 5 6 7 8 9 10 11 12 13 14 15  
+P2 16 1 15 0 2 4 6 8 10 12 14 0 2 4 6 8 10 12 14  
+P2 16 1 15 0 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7  
+P2 16 1 15 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7  
+P2 16 1 15 0 0 2 2 4 4 6 6 8 8 10 10 12 12 14 14  
+Test 2
+P1 8 1 01010101 
+P1 8 1 00000000 
+P1 8 1 11111111 
+P1 8 1 01010101 
+P1 8 1 01010101 
+P1 8 1 01010101 
+P1 8 1 00000000 
+P1 8 1 11111111 
+P1 8 1 11111111 
+P1 8 1 11111111 
+P1 8 1 11111111 
+Test 3 (-changemaxval)
+P2 16 1 30 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15  
+P2 16 1 60 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15  
+P1 8 1 01010101 
+P1 8 1 11111111 
+Test 4: Should print 1926073387 101484 eight times
+1926073387 101484
+1926073387 101484
+1926073387 101484
+1926073387 101484
+1926073387 101484
+1926073387 101484
+1926073387 101484
+1926073387 101484
+Test 5: Should print 281226646 481 six times
+281226646 481
+281226646 481
+281226646 481
+281226646 481
+281226646 481
+281226646 481
+Test Invalid
+Expected failure 1 (no output)
+Expected failure 2 (no output)
+Expected failure 3 (no output)
+Expected failure 4 (no output)
+Expected failure 5 (no output)
+Expected failure 6 (no output)
+Expected failure 7 (no output)
+Expected failure 8 (no output)
+Expected failure 9 (no output)
+Expected failure 10 (no output)
+Expected failure 11 (no output)
+Expected failure 12 (no output)
+Expected failure 13 (no output)
+Expected failure 14 (no output)
+Expected failure 15 (no output)
+Expected failure 16 (no output)
+Expected failure 17 (no output)
+Expected failure 18 (no output)
+Expected failure 19 (no output)
+Expected failure 20 (no output)
+Expected failure 21 (no output)
+Expected failure 22 (no output)
+Expected failure 23 (no output)
+Expected failure 24 (no output)

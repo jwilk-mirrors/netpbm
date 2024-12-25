@@ -1,0 +1,63 @@
+#! /bin/sh
+# This script tests: pambrighten
+# Also requires: pgmramp
+
+tmpdir=${tmpdir:-/tmp}
+
+input_ppm=${tmpdir}/input.ppm
+
+cat > ${input_ppm} << EOF
+P3
+8 1
+255
+0 0 0 0 0 100 0 100 0 0 100 100 100 0 0 100 0 100 100 100 0 100 100 100
+EOF
+
+# Test 1
+
+echo "Test 1"
+pambrighten -v   0 -plain ${input_ppm}
+pambrighten -v +10 -plain ${input_ppm}
+pambrighten -v -10 -plain ${input_ppm}
+pambrighten -v +100 -plain ${input_ppm}
+pambrighten -v +200 -plain ${input_ppm}
+pambrighten -v -100 -plain ${input_ppm}
+
+echo "Test 2"
+pambrighten -s -10 -plain ${input_ppm}
+pambrighten -s -100 -plain ${input_ppm}
+
+echo "Test 3: Output invariant"
+pambrighten         -plain ${input_ppm}
+pambrighten -v   0  -plain ${input_ppm}
+pambrighten -s   0  -plain ${input_ppm}
+pambrighten -s +10  -plain ${input_ppm}
+pambrighten -s +100 -plain ${input_ppm}
+pambrighten -s +200 -plain ${input_ppm}
+
+rm ${input_ppm}
+
+echo "Test 4: Should print 3990234518 268 six times"
+
+input_pgm=${tmpdir}/input.pgm
+
+pgmramp -lr 255 1 | tee ${input_pgm} | cksum
+pambrighten -s -100 ${input_pgm} | cksum
+pambrighten -s -10  ${input_pgm} | cksum
+pambrighten -s +10  ${input_pgm} | cksum
+pambrighten -s +100 ${input_pgm} | cksum
+pambrighten -s +200 ${input_pgm} | cksum
+
+rm ${input_pgm}
+
+echo "Test Invalid"
+
+. ./test-invalid.inc
+
+invCmd "pambrighten -v -120 testimg.ppm"
+invCmd "pambrighten -s -120 testimg.ppm"
+invCmd "pambrighten 10 testimg.ppm"
+invCmd "pambrighten -s 1.20 testimg.ppm"
+invCmd "pambrighten -v 10.5 testimg.ppm"
+invCmd "pambrighten -v testimg.ppm"
+invCmd "pambrighten -s testimg.ppm"

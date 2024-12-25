@@ -1,0 +1,36 @@
+#! /bin/sh
+# This script tests: pgmramp
+# Also requires:
+
+echo "Test 1"
+
+for type in -lr -tb -rectangle -ellipse -diagonal
+do
+pgmramp -maxval=6 $type 4 4 -plain
+done
+
+echo "Test 2"
+
+for type in -lr -tb -rectangle -ellipse
+do pgmramp $type 256 256 | cksum
+done
+
+echo "Test 3"
+
+pgmramp -diagonal -maxval=510 256 256 | cksum
+
+echo "Test Invalid"
+
+. ./test-invalid.inc
+
+
+for combination in "-lr -tb" "-lr -rectangle" "-rectangle -ellipse"
+  do
+    invCmd "pgmramp ${combination} 10 10"
+  done
+
+invCmd "pgmramp -lr 10 0"
+invCmd "pgmramp -lr 0 10"
+invCmd "pgmramp -lr 1"
+invCmd "pgmramp -tb 1 1 1"
+

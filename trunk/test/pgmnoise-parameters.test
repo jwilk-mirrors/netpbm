@@ -1,0 +1,14 @@
+#! /bin/sh
+# This script tests: pgmnoise
+# Also requires:
+
+echo "Test Invalid"
+
+. ./test-invalid.inc
+
+invCmd "pgmnoise"
+invCmd "pgmnoise -maxval=255  -randomseed=1"
+invCmd "pgmnoise 100 -randomseed=1"
+invCmd "pgmnoise 100 0 -randomseed=1"
+invCmd "pgmnoise 0 100 -randomseed=1"
+invCmd "pgmnoise 100 100 100 -randomseed=1"

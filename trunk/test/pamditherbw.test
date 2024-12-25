@@ -1,0 +1,57 @@
+#! /bin/sh
+# This script tests: pamditherbw
+# Also requires: pamchannel pamtopnm
+
+tmpdir=${tmpdir:-/tmp}
+test_red=${tmpdir}/testimg.red
+
+# Test 1.  Simple threshold
+echo "Test: simple threshold"
+
+pamchannel -infile=testimg.ppm -tupletype="GRAYSCALE" 0 | pamtopnm | \
+  tee ${test_red} | \
+  pamditherbw -threshold -val=0.5 | cksum
+
+
+# Test 2. Hilbert
+echo "Test: Hilbert"
+pamditherbw -hilbert ${test_red} | cksum
+pamditherbw -hilbert -clump=4   ${test_red} | cksum
+pamditherbw -hilbert -clump=16  ${test_red} | cksum
+pamditherbw -hilbert -clump=100 ${test_red} | cksum
+
+# Test 3. Dither-8
+echo "Test: Dither-8"
+pamditherbw -dither8 ${test_red} | cksum
+
+# Test 4. Cluster-3
+echo "Test: Cluster-3"
+pamditherbw -cluster4 ${test_red} | cksum
+
+# Test 5. Cluster-4
+echo "Test: Cluster-4"
+pamditherbw -cluster4 ${test_red} | cksum
+
+# Test 6. Cluster-8
+echo "Test: Cluster-8"
+pamditherbw -cluster8 ${test_red} | cksum
+
+
+echo "Test: Invalid"
+
+. ./test-invalid.inc
+
+invCmd "pamditherbw -fs -atkinson       ${test_red}"
+invCmd "pamditherbw -floyd -atkinson    ${test_red}"
+invCmd "pamditherbw -dither8  -cluster3 ${test_red}"
+invCmd "pamditherbw -cluster3 -cluster4 ${test_red}"
+invCmd "pamditherbw -cluster3 -cluster8 ${test_red}"
+invCmd "pamditherbw -cluster4 -cluster8 ${test_red}"
+invCmd "pamditherbw -hilbert -threshold ${test_red}"
+invCmd "pamditherbw -clump=8            ${test_red}"
+invCmd "pamditherbw -fs -clump=8        ${test_red}"
+invCmd "pamditherbw -hilbert -clump=1   ${test_red}"
+invCmd "pamditherbw -th -value=-1       ${test_red}"
+invCmd "pamditherbw -th -value=1.1      ${test_red}"
+
+rm ${test_red}

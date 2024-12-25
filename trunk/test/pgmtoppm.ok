@@ -1,0 +1,39 @@
+Test 1.  Should print 1767073524 779 twice, then 1676700883 779
+1767073524 779
+1767073524 779
+1676700883 779
+Test 2.  Should print 718580145 779 twice
+718580145 779
+718580145 779
+Test 3.  Should print 718580145 779 twice
+718580145 779
+718580145 779
+Test 4.  Should print 829921912 685 seven times
+829921912 685
+829921912 685
+829921912 685
+829921912 685
+829921912 685
+829921912 685
+829921912 685
+Test 5.  Should print 934505096 685 four times
+934505096 685
+934505096 685
+934505096 685
+934505096 685
+Test 6. Should print 3083028153 685 three times
+3083028153 685
+3083028153 685
+3083028153 685
+Test 7 Invalid
+Expected failure 1 (no output)
+Expected failure 2 (no output)
+Expected failure 3 (no output)
+Expected failure 4 (no output)
+Expected failure 5 (no output)
+Expected failure 6 (no output)
+Expected failure 7 (no output)
+Expected failure 8 (no output)
+Expected failure 9 (no output)
+Expected failure 10 (no output)
+Expected failure 11 (no output)

@@ -1,0 +1,24 @@
+Test 1
+2066913605 5110
+2066913605 5110
+Test 2
+2920616515 2301
+2920616515 2301
+Test 3
+0 0 0 : 0
+Test 4
+ !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
+ !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
+Test 5 Invalid
+9998
+989454365 52512
+9999
+Expected failure 1 (no output)
+Expected failure 2 (no output)
+Test 6 Invalid
+6-1: 0 1 : 1 (no output)
+6-2: 0 1 : 1 (no output)
+6-3: 0 1 : 1 (no output)
+6-4: 0 1 : 1 (no output)
+6-5: 0 1 : 1 (no output)
+6-6: 0 1 : 1 (no output)

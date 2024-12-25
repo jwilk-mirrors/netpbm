@@ -1,0 +1,72 @@
+#! /bin/sh
+# This script tests: pbmtext
+# Also requires:
+
+# This test requires an iso-8859-1 locale
+# Skip this test if none are available
+
+LANG=C
+LC_ALL=C
+export LANG LC_ALL
+
+tmpdir=${tmpdir:-/tmp}
+iso88591_locale_list=${tmpdir}/iso88591_locale_list
+
+locale_to_test="en_US.iso88591"  # Initial value; this
+# does not have to be actually available.
+# Edit the above value if you have a preferred locale.
+
+# Make a list of available locales which end in "iso88591" etc.
+# If none are found, abort test
+
+locale -a |\
+    grep -e "\.iso88591$" -e "\.iso-8859-1$" -e "\.ISO-8859-1$" \
+	 > ${iso88591_locale_list} || locale_to_test=""
+
+# Hunt for a valid iso-8859-1 locale
+# Submit each candidate to a trial pbmtext run until one that works is
+# encountered
+
+until [ -z ${locale_to_test} ] || \
+  echo "A" | LC_ALL=${locale_to_test} pbmtext -wchar > /dev/null
+  do
+      # Read first line of file
+      locale_to_test=`head -n 1 ${iso88591_locale_list}`;
+      # then erase the line
+      sed -i 1d ${iso88591_locale_list};
+  done;
+
+if [ -z  ${locale_to_test} ]
+  then echo "No iso-8859-1 locale available." 1>&2
+       echo "Skipping." 1>&2
+       exit 80;
+else
+       echo "Testing with locale set to ${locale_to_test}" 1>&2
+fi;
+
+locale_for_test=${locale_to_test};
+
+# Two rows
+# Should print 2066913605 5110 twice
+echo "Test 1"
+
+awk 'BEGIN { for (i=32; i<=126;++i) printf("%c",i); print ""; \
+             for (i=161;i<=255;++i) printf("%c",i); }' | \
+    pbmtext -builtin bdf | cksum
+
+awk 'BEGIN { for (i=32; i<=126;++i) printf("%c",i); print ""; \
+             for (i=161;i<=255;++i) printf("%c",i); }' | \
+    LC_ALL=${locale_for_test} pbmtext -builtin bdf -wchar | cksum
+
+
+# Two rows
+# Should print 2858870527 192 twice
+
+echo "Test 2"
+
+awk 'BEGIN { for (i=32; i<=126;++i) printf("%c",i); print ""; \
+             for (i=161;i<=255;++i) printf("%c",i); print "" }' | cksum
+
+awk 'BEGIN { for (i=32; i<=126;++i) printf("%c",i); print ""; \
+             for (i=161;i<=255;++i) printf("%c",i); print ""}' | \
+    LC_ALL=${locale_for_test} pbmtext -builtin bdf -wchar -text-dump | cksum

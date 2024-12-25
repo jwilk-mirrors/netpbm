@@ -1,0 +1,36 @@
+#! /bin/sh
+# This script tests: bmptopnm ppmtobmp
+# Also requires: pamchannel pamtopnm pamseq
+
+tmpdir=${tmpdir:-/tmp}
+
+echo "Test 1 PBM.  Should print 281226646 481 four times"
+
+for mode in "" "-bpp=1" "-windows" "-os2"
+  do
+  ppmtobmp ${mode} maze.pbm | bmptopnm | cksum
+  done
+
+echo "Test 2 PPM.  Should print 1926073387 101484 four times"
+
+for mode in "" "-bpp=24" "-windows" "-os2"
+  do
+  ppmtobmp ${mode} testimg.ppm | bmptopnm | cksum
+  done
+
+echo "Test 3 PGM.  Should print 1571496937 33838 nine times"
+
+red_pgm=${tmpdir}/red.pgm
+mapfile_pgm=${tmpdir}/mapfile.pgm
+pamseq -tupletype="GRAYSCALE" 1 255 > ${mapfile_pgm}
+
+pamchannel -infile=testimg.ppm -tupletype="GRAYSCALE" 0 | \
+    pamtopnm | tee ${red_pgm} | cksum
+
+for mode in "" "-bpp=8" "-windows" "-os2"
+  do
+  ppmtobmp ${mode} ${red_pgm} | bmptopnm | cksum
+  ppmtobmp ${mode} -mapfile=${mapfile_pgm} ${red_pgm} | bmptopnm | cksum
+  done
+
+rm ${mapfile_pgm} ${red_pgm}
