@@ -1,7 +1,0 @@
-Name: Netpbm
-Description: Graphics utilities
-Version: @VERSION@
-Requires: 
-Libs: -L@LINKDIR@ -lnetpbm
-Libs.private: 
-Cflags: -I@INCLUDEDIR@

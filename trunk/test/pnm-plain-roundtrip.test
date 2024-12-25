@@ -1,9 +1,0 @@
-#! /bin/sh
-# This script tests: pamtopnm
-#
-
-
-pamtopnm -plain testimg.ppm | \
-  pamtopnm | cksum
-pamtopnm -plain maze.pbm | \
-  pamtopnm | cksum
