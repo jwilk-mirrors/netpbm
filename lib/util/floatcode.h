@@ -19,18 +19,18 @@ typedef struct {
    code for its own work.
 -----------------------------------------------------------------------------*/
     unsigned char bytes[4];
-} pm_bigendFloat;
+} pm_BigendFloat;
 
 
 static __inline__ float
-pm_floatFromBigendFloat(pm_bigendFloat const arg) {
+pm_floatFromBigendFloat(pm_BigendFloat const arg) {
 
     float retval;
 
     switch (pm_byteOrder) {
     case BIG_ENDIAN: {
         union {
-            pm_bigendFloat bigend;
+            pm_BigendFloat bigend;
             float native;
         } converter;
 
@@ -57,15 +57,15 @@ pm_floatFromBigendFloat(pm_bigendFloat const arg) {
 
 
 
-static __inline__ pm_bigendFloat
+static __inline__ pm_BigendFloat
 pm_bigendFloatFromFloat(float const arg) {
 
-    pm_bigendFloat retval;
+    pm_BigendFloat retval;
 
     switch (pm_byteOrder) {
     case BIG_ENDIAN: {
         union {
-            pm_bigendFloat bigend;
+            pm_BigendFloat bigend;
             float native;
         } converter;
 
@@ -103,18 +103,18 @@ typedef struct {
    code for its own work.
 -----------------------------------------------------------------------------*/
     unsigned char bytes[8];
-} pm_bigendDouble;
+} pm_BigendDouble;
 
 
 static __inline__ double
-pm_doubleFromBigendDouble(pm_bigendDouble const arg) {
+pm_doubleFromBigendDouble(pm_BigendDouble const arg) {
 
     double retval;
 
     switch (pm_byteOrder) {
     case BIG_ENDIAN: {
         union {
-            pm_bigendDouble bigend;
+            pm_BigendDouble bigend;
             double native;
         } converter;
 
@@ -145,15 +145,15 @@ pm_doubleFromBigendDouble(pm_bigendDouble const arg) {
 
 
 
-static __inline__ pm_bigendDouble
+static __inline__ pm_BigendDouble
 pm_bigendDoubleFromDouble(double const arg) {
 
-    pm_bigendDouble retval;
+    pm_BigendDouble retval;
 
     switch (pm_byteOrder) {
     case BIG_ENDIAN: {
         union {
-            pm_bigendDouble bigend;
+            pm_BigendDouble bigend;
             double native;
         } converter;
 

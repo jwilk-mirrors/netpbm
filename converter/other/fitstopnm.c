@@ -259,7 +259,7 @@ readFitsFloat(FILE *   const ifP,
               double * const vP) {
 
     unsigned int i;
-    pm_bigendFloat bigend;
+    pm_BigendFloat bigend;
 
     for (i = 0; i < 4; ++i) {
         int const ich = getc(ifP);
@@ -278,7 +278,7 @@ readFitsDouble(FILE *   const ifP,
                double * const vP) {
 
     unsigned int i;
-    pm_bigendDouble bigend;
+    pm_BigendDouble bigend;
 
     for (i = 0; i < 8; ++i) {
         int const ich = getc(ifP);
