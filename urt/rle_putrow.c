@@ -32,6 +32,8 @@
 
 #include <stdio.h>
 
+#include <pm.h>
+
 #include "rle_put.h"
 #include "rle.h"
 
@@ -182,239 +184,213 @@ findruns(rle_pixel * const row,
 
 
 
-/*****************************************************************
- * TAG( rle_putrow )
- * Write a scanline to the output file.
- *
- * Inputs:
- *      rows:           Pointer to vector of pointers to
- *                      rle_pixel arrays containing the pixel information.
- *                      If NULL, rowlen scanlines are skipped.
- *      rowlen:         The number of pixels in the scanline, or the
- *                      number of scanlines to skip (see above).
- * Outputs:
- *      Run length encoded information is written to the_hdr.rle_file.
- * Assumptions:
- *      I'm sure there are lots of assumptions in here.
- * Algorithm:
- *      There are two parts:
- *              1. Find all "sufficiently long" runs of background
- *                 color.  These will not be saved at all.
- *              2. For each run of non-background, for each color
- *                 channel, find runs of identical pixel values
- *                 between "data" segments (of differing pixel
- *                 values).
- *      For part 1, "sufficiently long" is 2 pixels, if the following
- *      data is less than 256 pixels long, otherwise it is 4 pixels.
- *      This is enforced by a post-process merge.
- *
- *      Part 1 can be done in two different ways, depending on whether
- *      FASTRUNS is defined or not.  With FASTRUNS defined, it finds
- *      runs of the background pixel value in each channel
- *      independently, and then merges the results.  With FASTRUNS not
- *      defined, it scans all channels in parallel.
- *
- *      Part 2 uses a state machine.  For each run of non-background
- *      data, it searches for sufficiently long sequences of a single
- *      value (in each channel independently).  Sufficiently long is 4
- *      pixels if the following data is < 256 pixels, 6 pixels
- *      otherwise.  This is because the startup cost for the run is 2
- *      bytes, and the startup cost for a data segment is 2 bytes if
- *      it is < 256 pixels long, 4 bytes otherwise.  Thus a run
- *      shorter than 4 or 6 pixels (respectively) would actually make
- *      the output longer.  An additional pixel is required if the
- *      preceding data is an odd number of pixels long (because a
- *      filler byte will be output at the end of it.)
- */
 
 void
-rle_putrow(rows, rowlen, the_hdr)
-rle_pixel *rows[];
-int rowlen;
-rle_hdr * the_hdr;
-{
+rle_putrow(rle_pixel ** const rows,
+           int          const rowlen,
+           rle_hdr *    const the_hdr) {
+/*----------------------------------------------------------------------------
+  Write a scanline to the output file.
+
+  Inputs:
+       rows:           Pointer to vector of pointers to
+                       rle_pixel arrays containing the pixel information.
+                       If NULL, rowlen scanlines are skipped.
+       rowlen:         The number of pixels in the scanline, or the
+                       number of scanlines to skip (see above).
+  Outputs:
+       Run length encoded information is written to the_hdr.rle_file.
+-----------------------------------------------------------------------------*/
+
+    /* Algorithm:
+
+       There are two parts:
+
+               1. Find all "sufficiently long" runs of background
+                  color.  These will not be saved at all.
+
+               2. For each run of non-background, for each color
+                  channel, find runs of identical pixel values
+                  between "data" segments (of differing pixel
+                  values).
+
+       For part 1, "sufficiently long" is 2 pixels, if the following
+       data is less than 256 pixels long, otherwise it is 4 pixels.
+       This is enforced by a post-process merge.
+
+       Part 1 can be done in two different ways, depending on whether
+       FASTRUNS is defined or not.  With FASTRUNS defined, it finds
+       runs of the background pixel value in each channel
+       independently, and then merges the results.  With FASTRUNS not
+       defined, it scans all channels in parallel.
+
+       Part 2 uses a state machine.  For each run of non-background
+       data, it searches for sufficiently long sequences of a single
+       value (in each channel independently).  Sufficiently long is 4
+       pixels if the following data is < 256 pixels, 6 pixels
+       otherwise.  This is because the startup cost for the run is 2
+       bytes, and the startup cost for a data segment is 2 bytes if
+       it is < 256 pixels long, 4 bytes otherwise.  Thus a run
+       shorter than 4 or 6 pixels (respectively) would actually make
+       the output longer.  An additional pixel is required if the
+       preceding data is an odd number of pixels long (because a
+       filler byte will be output at the end of it.)
+*/
+
     int i, j;
     int nrun;
-    rle_pixel *row;
+    rle_pixel * row;
     int mask;
     char bits[256];
-    short   state,              /* State of run-finding state machine. */
-            dstart,             /* Starting point for current data segment. */
-            dend,               /* Ending point of current data segment. */
-            rstart = 0,         /* Starting point of current run. */
-            runval = 0;         /* Data value for current run. */
+    short state;          /* State of run-finding state machine. */
+    short dstart;         /* Starting point for current data segment. */
+    short dend;           /* Ending point of current data segment. */
+    short rstart;         /* Starting point of current run. */
+    short runval;         /* Data value for current run. */
 
-    if (rows == NULL)
-    {
+    rstart = 0; /* initial value */
+    runval = 0; /* initial value */
+
+    if (!rows) {
         the_hdr->priv.put.nblank += rowlen;
         return;
     }
-    /*
-     * If not done already, allocate space to remember runs of
-     * non-background color.  A run of bg color must be at least 2
-     * bytes long to count, so there can be at most rowlen/3 of them.
-     */
-    if ( PBRUN == NULL )
-    {
+    /* If not done already, allocate space to remember runs of
+       non-background color.  A run of bg color must be at least 2
+       bytes long to count, so there can be at most rowlen/3 of them.
+    */
+    if (!PBRUN) {
         PBRUN = (short (*)[2])malloc(
             (unsigned)((rowlen/3 + 1) * 2 * sizeof(short)) );
-        if ( PBRUN == NULL )
-        {
-            fprintf( stderr, "%s: Malloc failed in rle_putrow, writing %s\n",
-                     the_hdr->cmd, the_hdr->file_name );
-            exit(1);
+        if (!PBRUN) {
+            pm_error("%s: Malloc failed in rle_putrow, writing '%s'",
+                     the_hdr->cmd, the_hdr->file_name);
         }
     }
     /* Unpack bitmask in the_hdr struct */
-    for ( i=0; i < the_hdr->ncolors; i++ )
-        bits[i] = RLE_BIT( *the_hdr, i );
-    bits[255] = RLE_BIT( *the_hdr, -1 );
+    for (i=0; i < the_hdr->ncolors; ++i)
+        bits[i] = RLE_BIT(*the_hdr, i);
+    bits[255] = RLE_BIT(*the_hdr, -1);
 
-    /*
-     * If saving only non-background pixels, find runs of them.  Note
-     * that the alpha channel is considered to be background iff it is
-     * zero.
-     */
+    /* If saving only non-background pixels, find runs of them.  Note
+       that the alpha channel is considered to be background iff it is
+       zero.
+    */
 #ifdef  FASTRUNS
-    if ( the_hdr->background )
-    {
-        /*
-         * Find runs in each color individually, merging them as we go.
-         */
+    if (the_hdr->background) {
+        /* Find runs in each color individually, merging them as we go. */
         nrun = 0;               /* start out with no runs */
         /* Alpha channel first */
-        if ( the_hdr->alpha )
-            nrun = findruns( rows[-1], rowlen, 0, nrun, PBRUN );
+        if (the_hdr->alpha)
+            nrun = findruns(rows[-1], rowlen, 0, nrun, PBRUN);
         /* Now the color channels */
-        for ( i = 0; i < the_hdr->ncolors; i++ )
-            if ( bits[i] )
-                nrun = findruns( rows[i], rowlen, the_hdr->bg_color[i],
-                                 nrun, PBRUN );
-    }
-    else
-    {
+        for (i = 0; i < the_hdr->ncolors; ++i)
+            if (bits[i])
+                nrun = findruns(rows[i], rowlen, the_hdr->bg_color[i],
+                                nrun, PBRUN);
+    } else {
         PBRUN[0][0] = 0;
-        PBRUN[0][1] = rowlen-1;
+        PBRUN[0][1] = rowlen - 1;
         nrun = 1;
     }
 #else                           /* FASTRUNS */
-    if (the_hdr->background)    /* find non-background runs */
-    {
+    if (the_hdr->background) {
+        /* find non-background runs */
         j = 0;
-        for (i=0; i<rowlen; i++)
-            if (!same_color( i, rows, the_hdr->bg_color,
-                             the_hdr->ncolors, bits ) ||
-                (the_hdr->alpha && rows[-1][i] != 0))
-            {
+        for (i=0; i<rowlen; ++i)
+            if (!same_color(i, rows, the_hdr->bg_color,
+                            the_hdr->ncolors, bits) ||
+                (the_hdr->alpha && rows[-1][i] != 0)) {
                 if (j > 0 && i - PBRUN[j-1][1] <= 2)
-                    j--;
+                    --j;
                 else
                     PBRUN[j][0] = i; /* start of run */
-                for ( i++;
-                      i < rowlen &&
-                        ( !same_color( i, rows, the_hdr->bg_color,
-                                         the_hdr->ncolors, bits ) ||
-                          (the_hdr->alpha && rows[-1][i] != 0) );
-                      i++)
-                    ;                   /* find the end of this run */
-                PBRUN[j][1] = i-1;    /* last in run */
-                j++;
+                /* find the end of this run */
+                for (++i;
+                     i < rowlen &&
+                         (!same_color(i, rows, the_hdr->bg_color,
+                                      the_hdr->ncolors, bits) ||
+                          (the_hdr->alpha && rows[-1][i] != 0));
+                     ++i);
+                PBRUN[j][1] = i - 1;    /* last in run */
+                ++j;
             }
         nrun = j;
-    }
-    else
-    {
+    } else {
         PBRUN[0][0] = 0;
-        PBRUN[0][1] = rowlen-1;
+        PBRUN[0][1] = rowlen - 1;
         nrun = 1;
     }
 #endif                          /* FASTRUNS */
     /* One final pass merges runs with fewer than 4 intervening pixels
-     * if the second run is longer than 255 pixels.  This is because
-     * the startup cost for such a run is 4 bytes.
-     */
-    if ( nrun > 1 )
-    {
-        for ( i = nrun - 1; i > 0; i-- )
-        {
-            if ( PBRUN[i][1] - PBRUN[i][0] > 255 &&
-                 PBRUN[i-1][1] + 4 > PBRUN[i][0] )
-            {
+       if the second run is longer than 255 pixels.  This is because
+       the startup cost for such a run is 4 bytes.
+    */
+    if (nrun > 1) {
+        for (i = nrun - 1; i > 0; --i) {
+            if (PBRUN[i][1] - PBRUN[i][0] > 255 &&
+                PBRUN[i-1][1] + 4 > PBRUN[i][0]) {
                 PBRUN[i-1][1] = PBRUN[i][1];
-                for ( j = i; j < nrun - 1; j++ )
-                {
+                for (j = i; j < nrun - 1; ++j) {
                     PBRUN[j][0] = PBRUN[j+1][0];
                     PBRUN[j][1] = PBRUN[j+1][1];
                 }
-                nrun--;
+                --nrun;
             }
         }
     }
 
-    if (nrun > 0)
-    {
-        if (the_hdr->priv.put.nblank > 0)
-        {
+    if (nrun > 0) {
+        if (the_hdr->priv.put.nblank > 0) {
             SkipBlankLines(the_hdr->priv.put.nblank);
             the_hdr->priv.put.nblank = 0;
         }
-        for ( mask = (the_hdr->alpha ? -1 : 0);
-              mask < the_hdr->ncolors;
-              mask++)                   /* do all colors */
-        {
-            if ( ! bits[mask & 0xff] )
-            {
+        /* do all colors */
+        for (mask = (the_hdr->alpha ? -1 : 0);
+             mask < the_hdr->ncolors;
+             ++mask) {
+
+            if (!bits[mask & 0xff])
                 continue;
-            }
+
             row = rows[mask];
             SetColor(mask);
             if (PBRUN[0][0] > 0)
-            {
                 SkipPixels(PBRUN[0][0], FALSE, FALSE);
-            }
-            for (j=0; j<nrun; j++)
-            {
+
+            for (j = 0; j < nrun; ++j) {
                 state = DATA;
                 dstart = PBRUN[j][0];
                 dend = PBRUN[j][1];
-                for (i=dstart; i<=dend; i++)
-                {
-                    switch(state)
-                    {
+                for (i=dstart; i<=dend; ++i) {
+                    switch(state) {
                     case DATA:
-                        if (i > dstart && runval == row[i])
-                        {
+                        if (i > dstart && runval == row[i]) {
                             /* 2 in a row may be a run. */
                             /* If odd data length, start with RUN1 */
-                            if ( ((i - dstart) % 2) == 0)
+                            if (((i - dstart) % 2) == 0)
                                 state = RUN1;
                             else
                                 state = RUN2;
-                        }
-                        else
-                        {
+                        } else {
                             runval = row[i];    /* maybe a run starts here? */
                             rstart = i;
                         }
                         break;
 
                     case RUN4:
-                        if (runval == row[i])
-                        {
+                        if (runval == row[i]) {
                             /* If the following data might be longer
-                             * than 255 pixels then look for 8 in a
-                             * row, otherwise, 6 in a row is
-                             * sufficient.  Fake this by skipping to
-                             * state RUN5.
-                             */
-                            if ( dend - i > 255 )
+                               than 255 pixels then look for 8 in a
+                               row, otherwise, 6 in a row is
+                               sufficient.  Fake this by skipping to
+                               state RUN5.
+                            */
+                            if (dend - i > 255)
                                 state  = RUN5;  /* Need some more. */
                             else
                                 state = RUN7;   /* Next one makes a run. */
-
-                        }
-                        else
-                        {
+                        } else {
                             state = DATA;       /* Nope, back to data */
                             runval = row[i];    /* but maybe a new run here? */
                             rstart = i;
@@ -426,33 +402,25 @@ rle_hdr * the_hdr;
                     case RUN3:
                     case RUN5:
                     case RUN6:
-                        if (runval == row[i])
-                        {
-                            /* Move to the next state. */
-                            state++;
-                        }
-                        else
-                        {
+                        if (runval == row[i]) {
+                            ++state;
+                        } else {
                             state = DATA;       /* Nope, back to data */
                             runval = row[i];    /* but maybe a new run here? */
                             rstart = i;
                         }
                         break;
 
-
                     case RUN7:
-                        if (runval == row[i])   /* enough in a row for a run */
-                        {
+                        if (runval == row[i]) {
+                            /* enough in a row for a run */
                             state = INRUN;
                             putdata(row + dstart, rstart - dstart);
 #ifdef FASTRUNS
-                            while ( row[++i] == runval && i <= dend)
-                                ; /* not quite so good, but not bad */
-                            i--;
+                            while (row[++i] == runval && i <= dend);
+                            --i;
 #endif /* FASTRUNS */
-                        }
-                        else
-                        {
+                        } else {
                             state = DATA;               /* not a run, */
                             runval = row[i];    /* but may this starts one */
                             rstart = i;
@@ -460,8 +428,8 @@ rle_hdr * the_hdr;
                         break;
 
                     case INRUN:
-                        if (runval != row[i])   /* if run out */
-                        {
+                        if (runval != row[i]) {
+                            /* run out */
                             state = DATA;
                             putrun(runval, i - rstart, FALSE);
                             runval = row[i];    /* who knows, might be more */
@@ -476,29 +444,25 @@ rle_hdr * the_hdr;
                 else
                     putdata(row + dstart, i - dstart);
 
-                if (j < nrun-1)
-                    SkipPixels(
-                            PBRUN[j+1][0] - dend - 1,
-                            FALSE, state == INRUN);
-                else
-                {
+                if (j < nrun - 1)
+                    SkipPixels(PBRUN[j+1][0] - dend - 1, FALSE,
+                               state == INRUN);
+                else {
                     if (rowlen - dend > 0)
-                        SkipPixels(
-                            rowlen - dend - 1,
-                            TRUE, state == INRUN);
+                        SkipPixels(rowlen - dend - 1, TRUE, state == INRUN);
                 }
             }
 
-            if ( mask != the_hdr->ncolors - 1 )
+            if (mask != the_hdr->ncolors - 1)
                 NewScanLine(FALSE);
         }
     }
 
     /* Increment to next scanline */
-    the_hdr->priv.put.nblank++;
+    ++the_hdr->priv.put.nblank;
 
     /* flush every scanline */
-    fflush( the_hdr->rle_file );
+    fflush(the_hdr->rle_file);
 }
 
 
