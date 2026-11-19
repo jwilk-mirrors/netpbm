@@ -62,12 +62,13 @@ findruns(rle_pixel * const row,
        Returns number of runs in brun.
 -----------------------------------------------------------------------------*/
 
-/* Algorithm:
+    /* Algorithm:
 
-   Search for occurrences of pixels not of the given color outside the runs
-   already found.  When some are found, add a new run or extend an existing
-   one.  Adjacent runs with fewer than two pixels intervening are merged.
- */
+       Search for occurrences of pixels not of the given color outside the
+       runs already found.  When some are found, add a new run or extend an
+       existing one.  Adjacent runs with fewer than two pixels intervening are
+       merged.
+    */
     int i;
     int nrun;
 
@@ -136,6 +137,131 @@ findruns(rle_pixel * const row,
 
 
 
+static void
+putRowOneColor(rle_hdr *   const the_hdr,
+               short (*    const pbrun)[2],
+               rle_pixel * const row,
+               int         const rowlen,
+               int         const nrun,
+               short *     const rstartP,
+               short *     const runvalP) {
+
+    short rstart;
+    short runval;
+    int j;
+
+    rstart = *rstartP;
+    runval = *runvalP;
+
+    if (the_hdr->priv.put.brun[0][0] > 0)
+        SkipPixels(pbrun[0][0], FALSE, FALSE);
+
+    for (j = 0; j < nrun; ++j) {
+        short const dstart0 = pbrun[j][0];
+        /* Starting point for current data segment. */
+        short const dend = pbrun[j][1];
+        /* Ending point of current data segment. */
+
+        short state;     /* State of run-finding state machine. */
+        short dstart;
+        int i;
+
+        for (dstart = dstart0, i = dstart, state = DATA;
+             i <= dend;
+             ++i) {
+
+            switch(state) {
+            case DATA:
+                if (i > dstart && runval == row[i]) {
+                    /* 2 in a row may be a run. */
+                    /* If odd data length, start with RUN1 */
+                    if (((i - dstart) % 2) == 0)
+                        state = RUN1;
+                    else
+                        state = RUN2;
+                } else {
+                    runval = row[i];    /* maybe a run starts here? */
+                    rstart = i;
+                }
+                break;
+
+            case RUN4:
+                if (runval == row[i]) {
+                    /* If the following data might be longer
+                       than 255 pixels then look for 8 in a
+                       row, otherwise, 6 in a row is
+                       sufficient.  Fake this by skipping to
+                       state RUN5.
+                    */
+                    if (dend - i > 255)
+                        state  = RUN5;  /* Need some more. */
+                    else
+                        state = RUN7;   /* Next one makes a run. */
+                } else {
+                    state = DATA;       /* Nope, back to data */
+                    runval = row[i];    /* but maybe a new run here? */
+                    rstart = i;
+                }
+                break;
+
+            case RUN1:
+            case RUN2:
+            case RUN3:
+            case RUN5:
+            case RUN6:
+                if (runval == row[i]) {
+                    ++state;
+                } else {
+                    state = DATA;       /* Nope, back to data */
+                    runval = row[i];    /* but maybe a new run here? */
+                    rstart = i;
+                }
+                break;
+
+            case RUN7:
+                if (runval == row[i]) {
+                    /* enough in a row for a run */
+                    state = INRUN;
+                    putdata(row + dstart, rstart - dstart);
+                    while (row[++i] == runval && i <= dend);
+                    --i;
+                } else {
+                    state = DATA;               /* not a run, */
+                    runval = row[i];    /* but may this starts one */
+                    rstart = i;
+                }
+                break;
+
+            case INRUN:
+                if (runval != row[i]) {
+                    /* run out */
+                    state = DATA;
+                    putrun(runval, i - rstart, FALSE);
+                    runval = row[i];    /* who knows, might be more */
+                    rstart = i;
+                    dstart = i; /* starting a new 'data' run */
+                }
+                break;
+            }
+        }
+        if (state == INRUN)
+            putrun(runval, i - rstart, TRUE);   /* last bit */
+        else
+            putdata(row + dstart, i - dstart);
+
+        if (j < nrun - 1)
+            SkipPixels(pbrun[j+1][0] - dend - 1, FALSE, state == INRUN);
+        else {
+            if (rowlen - dend > 0)
+                SkipPixels(rowlen - dend - 1, TRUE, state == INRUN);
+        }
+    }
+    *rstartP = rstart;
+    *runvalP = runval;
+}
+
+
+
 void
 rle_putrow(rle_pixel ** const rows,
            int          const rowlen,
@@ -183,7 +309,7 @@ rle_putrow(rle_pixel ** const rows,
        the output longer.  An additional pixel is required if the
        preceding data is an odd number of pixels long (because a
        filler byte will be output at the end of it.)
-*/
+    */
 
     char bits[256];
     int nrun;
@@ -210,7 +336,7 @@ rle_putrow(rle_pixel ** const rows,
         for (i = 0; i < the_hdr->ncolors; ++i)
             bits[i] = RLE_BIT(*the_hdr, i);
     }
-    bits[255] = RLE_BIT(*the_hdr, -1);
+    bits[255] = RLE_BIT(*the_hdr, 255);
 
     /* If saving only non-background pixels, find runs of them.  Note
        that the alpha channel is considered to be background iff it is
@@ -239,9 +365,9 @@ rle_putrow(rle_pixel ** const rows,
        the startup cost for such a run is 4 bytes.
     */
     if (nrun > 1) {
-        int i;
+        unsigned int i;
         for (i = nrun - 1; i > 0; --i) {
-            short ** const pbrun = pbrun;
+            short (* pbrun)[2] = the_hdr->priv.put.brun;
 
             if (pbrun[i][1] - pbrun[i][0] > 255 &&
                 pbrun[i-1][1] + 4 > pbrun[i][0]) {
@@ -260,136 +386,31 @@ rle_putrow(rle_pixel ** const rows,
     }
 
     if (nrun > 0) {
-        rle_pixel * row;
-        short state;          /* State of run-finding state machine. */
-        short dstart;         /* Starting point for current data segment. */
-        short dend;           /* Ending point of current data segment. */
         short rstart;         /* Starting point of current run. */
         short runval;         /* Data value for current run. */
         int mask;
-
-        rstart = 0; /* initial value */
-        runval = 0; /* initial value */
 
         if (the_hdr->priv.put.nblank > 0) {
             SkipBlankLines(the_hdr->priv.put.nblank);
             the_hdr->priv.put.nblank = 0;
         }
         /* do all colors */
-        for (mask = (the_hdr->alpha ? -1 : 0);
+        for (mask = (the_hdr->alpha ? -1 : 0), rstart = 0, runval = 0;
              mask < the_hdr->ncolors;
              ++mask) {
 
-            int j;
+            if (bits[mask & 0xff]) {
+                SetColor(mask);
 
-            if (!bits[mask & 0xff])
-                continue;
+                putRowOneColor(the_hdr, the_hdr->priv.put.brun,
+                               rows[mask], rowlen, nrun,
+                               &rstart, &runval);
 
-            row = rows[mask];
-            SetColor(mask);
-            if (the_hdr->priv.put.brun[0][0] > 0)
-                SkipPixels(the_hdr->priv.put.brun[0][0], FALSE, FALSE);
-
-            for (j = 0; j < nrun; ++j) {
-                int i;
-
-                state = DATA;
-                dstart = the_hdr->priv.put.brun[j][0];
-                dend = the_hdr->priv.put.brun[j][1];
-                for (i = dstart; i <= dend; ++i) {
-                    switch(state) {
-                    case DATA:
-                        if (i > dstart && runval == row[i]) {
-                            /* 2 in a row may be a run. */
-                            /* If odd data length, start with RUN1 */
-                            if (((i - dstart) % 2) == 0)
-                                state = RUN1;
-                            else
-                                state = RUN2;
-                        } else {
-                            runval = row[i];    /* maybe a run starts here? */
-                            rstart = i;
-                        }
-                        break;
-
-                    case RUN4:
-                        if (runval == row[i]) {
-                            /* If the following data might be longer
-                               than 255 pixels then look for 8 in a
-                               row, otherwise, 6 in a row is
-                               sufficient.  Fake this by skipping to
-                               state RUN5.
-                            */
-                            if (dend - i > 255)
-                                state  = RUN5;  /* Need some more. */
-                            else
-                                state = RUN7;   /* Next one makes a run. */
-                        } else {
-                            state = DATA;       /* Nope, back to data */
-                            runval = row[i];    /* but maybe a new run here? */
-                            rstart = i;
-                        }
-                        break;
-
-                    case RUN1:
-                    case RUN2:
-                    case RUN3:
-                    case RUN5:
-                    case RUN6:
-                        if (runval == row[i]) {
-                            ++state;
-                        } else {
-                            state = DATA;       /* Nope, back to data */
-                            runval = row[i];    /* but maybe a new run here? */
-                            rstart = i;
-                        }
-                        break;
-
-                    case RUN7:
-                        if (runval == row[i]) {
-                            /* enough in a row for a run */
-                            state = INRUN;
-                            putdata(row + dstart, rstart - dstart);
-                            while (row[++i] == runval && i <= dend);
-                            --i;
-                        } else {
-                            state = DATA;               /* not a run, */
-                            runval = row[i];    /* but may this starts one */
-                            rstart = i;
-                        }
-                        break;
-
-                    case INRUN:
-                        if (runval != row[i]) {
-                            /* run out */
-                            state = DATA;
-                            putrun(runval, i - rstart, FALSE);
-                            runval = row[i];    /* who knows, might be more */
-                            rstart = i;
-                            dstart = i; /* starting a new 'data' run */
-                        }
-                        break;
-                    }
-                }
-                if (state == INRUN)
-                    putrun(runval, i - rstart, TRUE);   /* last bit */
-                else
-                    putdata(row + dstart, i - dstart);
-
-                if (j < nrun - 1)
-                    SkipPixels(the_hdr->priv.put.brun[j+1][0] - dend - 1,
-                               FALSE, state == INRUN);
-                else {
-                    if (rowlen - dend > 0)
-                        SkipPixels(rowlen - dend - 1, TRUE, state == INRUN);
-                }
+                if (mask != the_hdr->ncolors - 1)
+                    NewScanLine(FALSE);
             }
-
-            if (mask != the_hdr->ncolors - 1)
-                NewScanLine(FALSE);
         }
     }
-
     /* Increment to next scanline */
     ++the_hdr->priv.put.nblank;
 
