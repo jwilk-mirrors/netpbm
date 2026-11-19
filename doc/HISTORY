@@ -34,6 +34,9 @@ not yet  BJH  Release 11.17.00
               (predecessors to rasttopnm and pnmtorast were in primordial
               Netpbm in 1989).
 
+              pnmtorle: fix bug: produces blank image in certain cases.
+              Broken in Netpbm 11.05 (December 2023).
+
               jbigtopnm: fix bug: fails with bogus error message about
               incremental BIE not continuing previous one when multi-BIE image
               is of certain dimension.  Always broken (jbigtopnm was new in

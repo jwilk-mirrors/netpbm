@@ -388,18 +388,33 @@ rle_putrow(rle_pixel ** const rows,
     if (nrun > 0) {
         short rstart;         /* Starting point of current run. */
         short runval;         /* Data value for current run. */
-        int mask;
+        unsigned int mask;
 
         if (the_hdr->priv.put.nblank > 0) {
             SkipBlankLines(the_hdr->priv.put.nblank);
             the_hdr->priv.put.nblank = 0;
         }
-        /* do all colors */
-        for (mask = (the_hdr->alpha ? -1 : 0), rstart = 0, runval = 0;
-             mask < the_hdr->ncolors;
-             ++mask) {
 
-            if (bits[mask & 0xff]) {
+        rstart = 0;  /* initial value */
+        runval = 0;  /* initial value */
+
+        if (the_hdr->alpha) {
+            /* Do the alpha channel, which is the special case of color index
+              255
+            */
+            if (bits[255]) {
+                SetColor(255);
+                putRowOneColor(the_hdr, the_hdr->priv.put.brun,
+                               rows[255], rowlen, nrun, &rstart, &runval);
+
+                NewScanLine(FALSE);
+            }
+        }
+
+        /* Do all colors */
+        for (mask = 0; mask < the_hdr->ncolors; ++mask) {
+
+            if (bits[mask %256]) {
                 SetColor(mask);
 
                 putRowOneColor(the_hdr, the_hdr->priv.put.brun,
