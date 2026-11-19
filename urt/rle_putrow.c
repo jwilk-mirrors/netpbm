@@ -38,8 +38,6 @@
 #include "rle.h"
 
 
-#define FASTRUNS                /* Faster run finding */
-
 #define FALSE   0
 #define TRUE    1
 
@@ -218,11 +216,8 @@ rle_putrow(rle_pixel ** const rows,
        data is less than 256 pixels long, otherwise it is 4 pixels.
        This is enforced by a post-process merge.
 
-       Part 1 can be done in two different ways, depending on whether
-       FASTRUNS is defined or not.  With FASTRUNS defined, it finds
-       runs of the background pixel value in each channel
-       independently, and then merges the results.  With FASTRUNS not
-       defined, it scans all channels in parallel.
+       Part 1 finds runs of the background pixel value in each channel
+       independently, and then merges the results.
 
        Part 2 uses a state machine.  For each run of non-background
        data, it searches for sufficiently long sequences of a single
@@ -276,7 +271,6 @@ rle_putrow(rle_pixel ** const rows,
        that the alpha channel is considered to be background iff it is
        zero.
     */
-#ifdef  FASTRUNS
     if (the_hdr->background) {
         /* Find runs in each color individually, merging them as we go. */
         nrun = 0;               /* start out with no runs */
@@ -293,35 +287,6 @@ rle_putrow(rle_pixel ** const rows,
         PBRUN[0][1] = rowlen - 1;
         nrun = 1;
     }
-#else                           /* FASTRUNS */
-    if (the_hdr->background) {
-        /* find non-background runs */
-        j = 0;
-        for (i=0; i<rowlen; ++i)
-            if (!same_color(i, rows, the_hdr->bg_color,
-                            the_hdr->ncolors, bits) ||
-                (the_hdr->alpha && rows[-1][i] != 0)) {
-                if (j > 0 && i - PBRUN[j-1][1] <= 2)
-                    --j;
-                else
-                    PBRUN[j][0] = i; /* start of run */
-                /* find the end of this run */
-                for (++i;
-                     i < rowlen &&
-                         (!same_color(i, rows, the_hdr->bg_color,
-                                      the_hdr->ncolors, bits) ||
-                          (the_hdr->alpha && rows[-1][i] != 0));
-                     ++i);
-                PBRUN[j][1] = i - 1;    /* last in run */
-                ++j;
-            }
-        nrun = j;
-    } else {
-        PBRUN[0][0] = 0;
-        PBRUN[0][1] = rowlen - 1;
-        nrun = 1;
-    }
-#endif                          /* FASTRUNS */
     /* One final pass merges runs with fewer than 4 intervening pixels
        if the second run is longer than 255 pixels.  This is because
        the startup cost for such a run is 4 bytes.
@@ -416,10 +381,8 @@ rle_putrow(rle_pixel ** const rows,
                             /* enough in a row for a run */
                             state = INRUN;
                             putdata(row + dstart, rstart - dstart);
-#ifdef FASTRUNS
                             while (row[++i] == runval && i <= dend);
                             --i;
-#endif /* FASTRUNS */
                         } else {
                             state = DATA;               /* not a run, */
                             runval = row[i];    /* but may this starts one */
@@ -564,36 +527,3 @@ rle_hdr * the_hdr;
 
 
 
-#ifndef FASTRUNS
-/*****************************************************************
- * TAG( same_color )
- *
- * Determine if the color at the given index position in the scan rows
- * is the same as the background color.
- * Inputs:
- *      index:      Index to the pixel position in each row.
- *      rows:       array of pointers to the scanlines
- *      bg_color:   the background color
- *      ncolors:    number of color elements/pixel
- * Outputs:
- *      TRUE if the color at row[*][i] is the same as bg_color[*].
- * Assumptions:
- *      [None]
- * Algorithm:
- *      [None]
- */
-static int
-same_color( index, rows, bg_color, ncolors, bits )
-rle_pixel *rows[];
-int bg_color[];
-char *bits;
-{
-    int i;
-
-    for ( i = 0; i < ncolors; i++, bits++ )
-        if ( *bits &&
-             rows[i][index] != bg_color[i] )
-            return 0;
-    return 1;                           /* all the same */
-}
-#endif /* !FASTRUNS */
