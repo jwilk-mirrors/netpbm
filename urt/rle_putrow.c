@@ -41,145 +41,98 @@
 #define FALSE   0
 #define TRUE    1
 
-/* Save some typing. */
-#define PBRUN the_hdr->priv.put.brun
 
-/*****************************************************************
- * TAG( findruns )
- *
- * Find runs not a given color in the row.
- * Inputs:
- *      row:            Row of pixel values
- *      rowlen:         Number of pixels in the row.
- *      color:          Color to compare against.
- *      nrun:           Number of runs already found (in different colors).
- *      brun:           Runs found in other color channels already.
- * Outputs:
- *      brun:           Modified to reflect merging of runs in this color.
- *      Returns number of runs in brun.
- * Assumptions:
- *
- * Algorithm:
- *      Search for occurrences of pixels not of the given color outside
- *      the runs already found.  When some are found, add a new run or
- *      extend an existing one.  Adjacent runs with fewer than two
- *      pixels intervening are merged.
- */
 static int
 findruns(rle_pixel * const row,
          int         const rowlen,
          int         const color,
          int         const nrunAlready,
          short    (* const brun)[2]) {
+/*----------------------------------------------------------------------------
+  Find runs not a given color in the row.
 
-    int i = 0, lower, upper;
-    int s, j;
+  Inputs:
+       row:            Row of pixel values
+       rowlen:         Number of pixels in the row.
+       color:          Color to compare against.
+       nrun:           Number of runs already found (in different colors).
+       brun:           Runs found in other color channels already.
+  Outputs:
+       brun:           Modified to reflect merging of runs in this color.
+       Returns number of runs in brun.
+-----------------------------------------------------------------------------*/
+
+/* Algorithm:
+
+   Search for occurrences of pixels not of the given color outside the runs
+   already found.  When some are found, add a new run or extend an existing
+   one.  Adjacent runs with fewer than two pixels intervening are merged.
+ */
+    int i;
     int nrun;
 
-#ifdef DEBUG
-    fprintf( stderr, "findruns( " );
-    for ( s = 0; s < rowlen; s++ )
-        fprintf( stderr, "%2x.%s", row[s], (s % 20 == 19) ? "\n\t" : "" );
-    if ( s % 20 != 0 )
-        fprintf( stderr, "\n\t" );
-    fprintf( stderr, "%d, %d, %d, \n\t", rowlen, color, nrun );
-    for ( j = 0; j < nrun; j++ )
-        fprintf( stderr, "(%3d,%3d) %s", brun[j][0], brun[j][1],
-                 (j % 6 == 5) ? "\n\t" : "" );
-    fprintf( stderr, ")\n" );
-#endif
-
-    nrun = nrunAlready;
-
-    while ( i <= nrun )
-    {
+    for (i = 0, nrun = nrunAlready; i <= nrun; ) {
+        int lower, upper;
+        int s;
         /* Assert: 0 <= i <= rowlen
-         * brun[i] is the run following the "blank" space being
-         * searched.  If i == rowlen, search after brun[i-1].
-         */
+           brun[i] is the run following the "blank" space being
+           searched.  If i == rowlen, search after brun[i-1].
+        */
 
         /* get lower and upper bounds of search */
 
-        if ( i == 0 )
+        if (i == 0)
             lower = 0;
         else
             lower = brun[i-1][1] + 1;
 
-        if ( i == nrun )
+        if (i == nrun)
             upper = rowlen - 1;
         else
             upper = brun[i][0] - 1;
 
-#ifdef DEBUG
-        fprintf( stderr, "Searching before run %d from %d to %d\n",
-                 i, lower, upper );
-#endif
         /* Search for beginning of run != color */
 
-        for ( s = lower; s <= upper; s++ )
-            if ( row[s] != color )
-                break;
+        for (s = lower; s <= upper && row[s] == color; ++s);
 
-
-        if ( s <= upper )       /* found a new run? */
-        {
-            if ( s > lower + 1 || i == 0 ) /* disjoint from preceding run? */
-            {
-#ifdef DEBUG
-                fprintf( stderr, "Found new run starting at %d\n", s );
-#endif
+        if (s <= upper) {
+            /* found a new run */
+            if (s > lower + 1 || i == 0) {
+                int j;
+                /* disjoint from preceding run */
                 /* Shift following runs up */
-                for ( j = nrun; j > i; j-- )
-                {
+                for (j = nrun; j > i; --j) {
                     brun[j][0] = brun[j-1][0];
                     brun[j][1] = brun[j-1][1];
                 }
                 brun[i][0] = s;
-                nrun++;
-            }
-            else
-            {
-                i--;            /* just add to preceding run */
-#ifdef DEBUG
-                fprintf( stderr, "Adding to previous run\n" );
-#endif
-            }
+                ++nrun;
+            } else
+                --i;            /* just add to preceding run */
 
-            for ( ; s <= upper; s++ )
-                if ( row[s] == color )
-                    break;
+            for ( ; s <= upper && row[s] != color; ++s);
 
             brun[i][1] = s - 1;
 
-#ifdef DEBUG
-            fprintf( stderr, "Ends at %d", s - 1 );
-#endif
-            if ( s >= upper && i < nrun - 1 ) /* merge with following run */
-            {
+            if (s >= upper && i < nrun - 1) {
+                int j;
+                 /* merge with following run */
                 brun[i][1] = brun[i+1][1];
                 /* move following runs back down */
-                for ( j = i + 2; j < nrun; j++ )
-                {
+                for (j = i + 2; j < nrun; ++j) {
                     brun[j-1][0] = brun[j][0];
                     brun[j-1][1] = brun[j][1];
                 }
-                nrun--;
-#ifdef DEBUG
-                fprintf( stderr, ", add to next run" );
-#endif
+                --nrun;
             }
-#ifdef DEBUG
-            putc( '\n', stderr );
-#endif
         }
 
         /* Search in next space */
-        i++;
+        ++i;
     }
 
     return nrun;
 }
-
 
 
 
@@ -254,10 +207,10 @@ rle_putrow(rle_pixel ** const rows,
        non-background color.  A run of bg color must be at least 2
        bytes long to count, so there can be at most rowlen/3 of them.
     */
-    if (!PBRUN) {
-        PBRUN = (short (*)[2])malloc(
+    if (!the_hdr->priv.put.brun) {
+        the_hdr->priv.put.brun = (short (*)[2])malloc(
             (unsigned)((rowlen/3 + 1) * 2 * sizeof(short)) );
-        if (!PBRUN) {
+        if (!the_hdr->priv.put.brun) {
             pm_error("%s: Malloc failed in rle_putrow, writing '%s'",
                      the_hdr->cmd, the_hdr->file_name);
         }
@@ -276,15 +229,15 @@ rle_putrow(rle_pixel ** const rows,
         nrun = 0;               /* start out with no runs */
         /* Alpha channel first */
         if (the_hdr->alpha)
-            nrun = findruns(rows[-1], rowlen, 0, nrun, PBRUN);
+            nrun = findruns(rows[-1], rowlen, 0, nrun, the_hdr->priv.put.brun);
         /* Now the color channels */
         for (i = 0; i < the_hdr->ncolors; ++i)
             if (bits[i])
                 nrun = findruns(rows[i], rowlen, the_hdr->bg_color[i],
-                                nrun, PBRUN);
+                                nrun, the_hdr->priv.put.brun);
     } else {
-        PBRUN[0][0] = 0;
-        PBRUN[0][1] = rowlen - 1;
+        the_hdr->priv.put.brun[0][0] = 0;
+        the_hdr->priv.put.brun[0][1] = rowlen - 1;
         nrun = 1;
     }
     /* One final pass merges runs with fewer than 4 intervening pixels
@@ -293,12 +246,13 @@ rle_putrow(rle_pixel ** const rows,
     */
     if (nrun > 1) {
         for (i = nrun - 1; i > 0; --i) {
-            if (PBRUN[i][1] - PBRUN[i][0] > 255 &&
-                PBRUN[i-1][1] + 4 > PBRUN[i][0]) {
-                PBRUN[i-1][1] = PBRUN[i][1];
+            short ** const pbrun = pbrun;
+            if (pbrun[i][1] - pbrun[i][0] > 255 &&
+                pbrun[i-1][1] + 4 > pbrun[i][0]) {
+                pbrun[i-1][1] = pbrun[i][1];
                 for (j = i; j < nrun - 1; ++j) {
-                    PBRUN[j][0] = PBRUN[j+1][0];
-                    PBRUN[j][1] = PBRUN[j+1][1];
+                    pbrun[j][0] = pbrun[j+1][0];
+                    pbrun[j][1] = pbrun[j+1][1];
                 }
                 --nrun;
             }
@@ -320,13 +274,13 @@ rle_putrow(rle_pixel ** const rows,
 
             row = rows[mask];
             SetColor(mask);
-            if (PBRUN[0][0] > 0)
-                SkipPixels(PBRUN[0][0], FALSE, FALSE);
+            if (the_hdr->priv.put.brun[0][0] > 0)
+                SkipPixels(the_hdr->priv.put.brun[0][0], FALSE, FALSE);
 
             for (j = 0; j < nrun; ++j) {
                 state = DATA;
-                dstart = PBRUN[j][0];
-                dend = PBRUN[j][1];
+                dstart = the_hdr->priv.put.brun[j][0];
+                dend = the_hdr->priv.put.brun[j][1];
                 for (i=dstart; i<=dend; ++i) {
                     switch(state) {
                     case DATA:
@@ -408,8 +362,8 @@ rle_putrow(rle_pixel ** const rows,
                     putdata(row + dstart, i - dstart);
 
                 if (j < nrun - 1)
-                    SkipPixels(PBRUN[j+1][0] - dend - 1, FALSE,
-                               state == INRUN);
+                    SkipPixels(the_hdr->priv.put.brun[j+1][0] - dend - 1,
+                               FALSE, state == INRUN);
                 else {
                     if (rowlen - dend > 0)
                         SkipPixels(rowlen - dend - 1, TRUE, state == INRUN);
@@ -430,27 +384,20 @@ rle_putrow(rle_pixel ** const rows,
 
 
 
-/*****************************************************************
- * TAG( rle_put_init )
- *
- * Initialize the header structure for writing scanlines.
- * Inputs:
- *      [None]
- * Outputs:
- *      the_hdr:        Private portions initialized for output.
- * Assumptions:
- *      [None]
- * Algorithm:
- *      [None]
- */
 void
-rle_put_init( the_hdr )
-rle_hdr *the_hdr;
-{
+rle_put_init(rle_hdr * const  the_hdr) {
+/*----------------------------------------------------------------------------
+  TAG( rle_put_init )
+
+  Initialize the header structure for writing scanlines.
+  Inputs:
+       [None]
+  Outputs:
+       the_hdr:        Private portions initialized for output.
+-----------------------------------------------------------------------------*/
     the_hdr->dispatch = RUN_DISPATCH;
 
-    if ( the_hdr->is_init != RLE_INIT_MAGIC )
-    {
+    if (the_hdr->is_init != RLE_INIT_MAGIC) {
         the_hdr->cmd = "Urt";
         the_hdr->file_name = "some file";
     }
@@ -458,35 +405,28 @@ rle_hdr *the_hdr;
     /* Would like to be able to free previously allocated storage,
      * but can't count on a non-NULL value being a valid pointer.
      */
-    PBRUN = NULL;
+    the_hdr->priv.put.brun = NULL;
     the_hdr->priv.put.fileptr = 0;
 
     /* Only save alpha if alpha AND alpha channel bit are set. */
-    if ( the_hdr->alpha )
+    if (the_hdr->alpha)
         the_hdr->alpha = (RLE_BIT( *the_hdr, -1 ) != 0);
     else
-        RLE_CLR_BIT( *the_hdr, -1 );
+        RLE_CLR_BIT(*the_hdr, -1);
 }
 
 
 
-/*****************************************************************
- * TAG( rle_put_setup )
- *
- * Initialize for writing RLE, and write header to output file.
- * Inputs:
- *      the_hdr:        Describes output image.
- * Outputs:
- *      the_hdr:        Initialized.
- * Assumptions:
- *      Lots of them.
- * Algorithm:
- *      [None]
- */
 void
-rle_put_setup( the_hdr )
-rle_hdr * the_hdr;
-{
+rle_put_setup(rle_hdr * const the_hdr) {
+/*----------------------------------------------------------------------------
+  Initialize for writing RLE, and write header to output file.
+  Inputs:
+       the_hdr:        Describes output image.
+  Outputs:
+       the_hdr:        Initialized.
+-----------------------------------------------------------------------------*/
+
     rle_put_init( the_hdr );
     the_hdr->img_num++;         /* Count output images. */
     Setup();
@@ -495,34 +435,29 @@ rle_hdr * the_hdr;
 
 
 void
-DefaultBlockHook(rle_hdr * the_hdr)
-{
-                                        /* Do nothing */
+rle_defaultBlockHook(rle_hdr * const the_hdr) {
 }
 
 
 
-/*****************************************************************
- * TAG( rle_puteof )
- * Write an EOF code into the output file.
- */
 void
-rle_puteof( the_hdr )
-rle_hdr * the_hdr;
-{
-    /* Don't puteof twice. */
-    if ( the_hdr->dispatch == NO_DISPATCH )
-        return;
-    PutEof();
-    fflush( the_hdr->rle_file );
-    /* Free storage allocated by rle_put_init. */
-    if ( PBRUN != NULL )
-    {
-        free( PBRUN );
-        PBRUN = NULL;
+rle_puteof(rle_hdr * const the_hdr) {
+/*----------------------------------------------------------------------------
+  Write an EOF code into the output file.
+-----------------------------------------------------------------------------*/
+    if (the_hdr->dispatch == NO_DISPATCH) {
+        /* puteof already done */
+    } else {
+        PutEof();
+        fflush( the_hdr->rle_file);
+        /* Free storage allocated by rle_put_init. */
+        if (the_hdr->priv.put.brun) {
+            free(the_hdr->priv.put.brun);
+            the_hdr->priv.put.brun = NULL;
+        }
+        /* Signal that puteof has been called. */
+        the_hdr->dispatch = NO_DISPATCH;
     }
-    /* Signal that puteof has been called. */
-    the_hdr->dispatch = NO_DISPATCH;
 }
 
 

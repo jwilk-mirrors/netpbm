@@ -47,7 +47,7 @@ struct rle_dispatch_tab rle_DTable[] = {
         RunNewScanLine,
         Runputdata,
         Runputrun,
-        DefaultBlockHook,
+        rle_defaultBlockHook,
         RunputEof
     },
 };

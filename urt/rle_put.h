@@ -86,7 +86,7 @@ extern struct rle_dispatch_tab rle_DTable[];
 #define     PutEof()            (*rle_DTable[(int)the_hdr->dispatch].putEof)(the_hdr)
 
 void
-DefaultBlockHook(rle_hdr * the_hdr);
+rle_defaultBlockHook(rle_hdr * the_hdr);
 /*
  * States for run detection
  */
