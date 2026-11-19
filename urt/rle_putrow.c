@@ -185,19 +185,8 @@ rle_putrow(rle_pixel ** const rows,
        filler byte will be output at the end of it.)
 */
 
-    int i, j;
-    int nrun;
-    rle_pixel * row;
-    int mask;
     char bits[256];
-    short state;          /* State of run-finding state machine. */
-    short dstart;         /* Starting point for current data segment. */
-    short dend;           /* Ending point of current data segment. */
-    short rstart;         /* Starting point of current run. */
-    short runval;         /* Data value for current run. */
-
-    rstart = 0; /* initial value */
-    runval = 0; /* initial value */
+    int nrun;
 
     if (!rows) {
         the_hdr->priv.put.nblank += rowlen;
@@ -215,9 +204,12 @@ rle_putrow(rle_pixel ** const rows,
                      the_hdr->cmd, the_hdr->file_name);
         }
     }
-    /* Unpack bitmask in the_hdr struct */
-    for (i=0; i < the_hdr->ncolors; ++i)
-        bits[i] = RLE_BIT(*the_hdr, i);
+    {
+        int i;
+        /* Unpack bitmask in the_hdr struct */
+        for (i = 0; i < the_hdr->ncolors; ++i)
+            bits[i] = RLE_BIT(*the_hdr, i);
+    }
     bits[255] = RLE_BIT(*the_hdr, -1);
 
     /* If saving only non-background pixels, find runs of them.  Note
@@ -225,16 +217,18 @@ rle_putrow(rle_pixel ** const rows,
        zero.
     */
     if (the_hdr->background) {
+        int i;
         /* Find runs in each color individually, merging them as we go. */
         nrun = 0;               /* start out with no runs */
         /* Alpha channel first */
         if (the_hdr->alpha)
             nrun = findruns(rows[-1], rowlen, 0, nrun, the_hdr->priv.put.brun);
         /* Now the color channels */
-        for (i = 0; i < the_hdr->ncolors; ++i)
+        for (i = 0; i < the_hdr->ncolors; ++i) {
             if (bits[i])
                 nrun = findruns(rows[i], rowlen, the_hdr->bg_color[i],
                                 nrun, the_hdr->priv.put.brun);
+        }
     } else {
         the_hdr->priv.put.brun[0][0] = 0;
         the_hdr->priv.put.brun[0][1] = rowlen - 1;
@@ -245,11 +239,17 @@ rle_putrow(rle_pixel ** const rows,
        the startup cost for such a run is 4 bytes.
     */
     if (nrun > 1) {
+        int i;
         for (i = nrun - 1; i > 0; --i) {
             short ** const pbrun = pbrun;
+
             if (pbrun[i][1] - pbrun[i][0] > 255 &&
                 pbrun[i-1][1] + 4 > pbrun[i][0]) {
+
+                int j;
+
                 pbrun[i-1][1] = pbrun[i][1];
+
                 for (j = i; j < nrun - 1; ++j) {
                     pbrun[j][0] = pbrun[j+1][0];
                     pbrun[j][1] = pbrun[j+1][1];
@@ -260,6 +260,17 @@ rle_putrow(rle_pixel ** const rows,
     }
 
     if (nrun > 0) {
+        rle_pixel * row;
+        short state;          /* State of run-finding state machine. */
+        short dstart;         /* Starting point for current data segment. */
+        short dend;           /* Ending point of current data segment. */
+        short rstart;         /* Starting point of current run. */
+        short runval;         /* Data value for current run. */
+        int mask;
+
+        rstart = 0; /* initial value */
+        runval = 0; /* initial value */
+
         if (the_hdr->priv.put.nblank > 0) {
             SkipBlankLines(the_hdr->priv.put.nblank);
             the_hdr->priv.put.nblank = 0;
@@ -268,6 +279,8 @@ rle_putrow(rle_pixel ** const rows,
         for (mask = (the_hdr->alpha ? -1 : 0);
              mask < the_hdr->ncolors;
              ++mask) {
+
+            int j;
 
             if (!bits[mask & 0xff])
                 continue;
@@ -278,10 +291,12 @@ rle_putrow(rle_pixel ** const rows,
                 SkipPixels(the_hdr->priv.put.brun[0][0], FALSE, FALSE);
 
             for (j = 0; j < nrun; ++j) {
+                int i;
+
                 state = DATA;
                 dstart = the_hdr->priv.put.brun[j][0];
                 dend = the_hdr->priv.put.brun[j][1];
-                for (i=dstart; i<=dend; ++i) {
+                for (i = dstart; i <= dend; ++i) {
                     switch(state) {
                     case DATA:
                         if (i > dstart && runval == row[i]) {
@@ -385,11 +400,10 @@ rle_putrow(rle_pixel ** const rows,
 
 
 void
-rle_put_init(rle_hdr * const  the_hdr) {
+rle_put_init(rle_hdr * const the_hdr) {
 /*----------------------------------------------------------------------------
-  TAG( rle_put_init )
-
   Initialize the header structure for writing scanlines.
+
   Inputs:
        [None]
   Outputs:
@@ -421,6 +435,7 @@ void
 rle_put_setup(rle_hdr * const the_hdr) {
 /*----------------------------------------------------------------------------
   Initialize for writing RLE, and write header to output file.
+
   Inputs:
        the_hdr:        Describes output image.
   Outputs:
