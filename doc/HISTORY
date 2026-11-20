@@ -11,6 +11,9 @@ not yet  BJH  Release 11.17.00
               pammixmulti: reject nonpositive standard deviation with
               -stdev.
 
+              ppmtoxpm: fix missing transparency.  Broken in Netpbm 11.05
+              (December 2023).
+
               pnmtorast: fix incorrect output whenever image ends with a lone
               128 sample.  Always broken (predecessors to pnmtorast were in
               primordial Netpbm in 1989)

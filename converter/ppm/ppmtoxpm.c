@@ -530,7 +530,7 @@ computecolorhash(pixel **          const pixels,
                     ++ncolors;
                 }
             } else
-                *transparentSomewhereP = true;
+                foundTransparent = true;
         }
     }
     *chtP                  = cht;
