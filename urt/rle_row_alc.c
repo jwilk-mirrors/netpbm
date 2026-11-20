@@ -28,107 +28,138 @@
  * Copyright (c) 1986, Spencer W. Thomas
  */
 
+#include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "mallocvar.h"
+
 #include "rle.h"
 
-/*****************************************************************
- * TAG( rle_row_alloc )
- *
- * Allocate buffer space for use by rle_getrow and rle_putrow.
- * Inputs:
- *      the_hdr:        Header structure for RLE file to be read or
- *                      written.
- * Outputs:
- *      scanp:          Pointer to pointer to created scanline buffer.
- *                      This pointer is adjusted for the alpha channel,
- *                      if present.
- *      Returns 0 for success, -1 if malloc failed.
- * Assumptions:
- *      No input scanline will extend beyond the declared xmax endpoint.
- * Algorithm:
- *      Count number of channels actually used (check bitmap).
- *      Allocate nchan*rowlength pixels, allocate a buffer
- *      to hold ncolors+alpha pointers, and give each channel
- *      rowlength pixels.  Rowlength is xmax + 1, to allow for rle_getrow
- *      usage.
- */
-int
-rle_row_alloc( the_hdr, scanp )
-rle_hdr *the_hdr;
-rle_pixel ***scanp;
-{
-    rle_pixel ** scanbuf, * pixbuf;
-    int rowlen, nchan = 0, i, ncol;
 
-    rowlen = the_hdr->xmax + 1;
-    if ( the_hdr->alpha && RLE_BIT( *the_hdr, RLE_ALPHA ) )
-        nchan++;
-    for ( i = 0; i < the_hdr->ncolors; i++ )
-        if ( RLE_BIT( *the_hdr, i ) )
-             nchan++;
 
-    ncol = the_hdr->ncolors + the_hdr->alpha;
 
-    if ( (scanbuf = (rle_pixel **)malloc( ncol * sizeof(rle_pixel *) )) == 0 )
-        return -1;
-    if ( (pixbuf = (rle_pixel *)malloc( nchan * rowlen *
-                                       sizeof(rle_pixel) )) == 0 )
-    {
-        free( scanbuf );
-        return -1;
+static unsigned int
+numChannels(const rle_hdr * const the_hdr) {
+
+    unsigned int nchan;
+    unsigned int i;
+
+    nchan = 0; /* initial value */
+
+    if (the_hdr->alpha && RLE_BIT(*the_hdr, RLE_ALPHA))
+        ++nchan;
+
+    for (i = 0; i < the_hdr->ncolors; ++i) {
+        if (RLE_BIT(*the_hdr, i))
+            ++nchan;
     }
 
-    if ( the_hdr->alpha )
-        scanbuf++;
-
-    for ( i = -the_hdr->alpha; i < the_hdr->ncolors; i++ )
-        if ( RLE_BIT( *the_hdr, i ) )
-        {
-            scanbuf[i] = pixbuf;
-            pixbuf += rowlen;
-        }
-        else
-            scanbuf[i] = 0;
-    *scanp = scanbuf;
-
-    return 0;
+    return nchan;
 }
 
 
 
-/*****************************************************************
- * TAG( rle_row_free )
- *
- * Free storage allocated by rle_row_alloc().
- * Inputs:
- *      the_hdr:        Header structure as above.
- *      scanp:          Pointer to scanbuf above.
- * Outputs:
- *      Frees storage referenced by scanp and nrawp.
- * Assumptions:
- *      Storage was allocated by rle_row_alloc, or by use of same
- *      algorithm, at least.
- * Algorithm:
- *      free scanp[0] and scanp.
- */
-void
-rle_row_free( the_hdr, scanp )
-rle_hdr *the_hdr;
-rle_pixel **scanp;
-{
-    int i;
+int
+rle_row_alloc(rle_hdr *     const the_hdr,
+              rle_pixel *** const scanP) {
+/*----------------------------------------------------------------------------
+  Allocate buffer space for use by rle_getrow and rle_putrow.
 
-    if ( the_hdr->alpha )
-        scanp--;
-    for ( i = 0; i < the_hdr->ncolors + the_hdr->alpha; i++ )
-        if ( scanp[i] != 0 )
-        {
-            free( (char *)scanp[i] );
+  Inputs:
+       the_hdr:        Header structure for RLE file to be read or
+                       written.
+  Outputs:
+       *scanP:         Pointer to first color channel in the created scanline
+                       buffer.
+
+                       Note that if the image has an alpha channel, this is
+                       the _second_ element of the array.
+                       if present.
+
+       Returns 0 for success, -1 if malloc failed.
+
+  Assumptions:
+       No input scanline will extend beyond the declared xmax endpoint.
+
+-----------------------------------------------------------------------------*/
+    /* Algorithm:
+
+       Count number of channels actually used (check bitmap).
+       Allocate nchan*rowlength pixels, allocate a buffer
+       to hold ncolors+alpha pointers, and give each channel
+       rowlength pixels.  Rowlength is xmax + 1, to allow for rle_getrow
+       usage.
+    */
+
+    unsigned int const nchan  = numChannels(the_hdr);
+    unsigned int const ncol   = the_hdr->ncolors + the_hdr->alpha;
+    unsigned int const rowlen = the_hdr->xmax + 1;
+
+    int          retval;
+    rle_pixel ** scanbuf;
+    rle_pixel *  pixbuf;
+
+    MALLOCARRAY(scanbuf, ncol);
+
+    if (!scanbuf)
+        retval = -1;
+    else {
+        MALLOCARRAY(pixbuf, nchan * rowlen);
+
+        if (!pixbuf)
+            retval = -1;
+        else {
+            rle_pixel ** colorScanbuf;
+            int i;
+
+            retval = 0;
+
+            assert(the_hdr->alpha == 0 || the_hdr->alpha == 1);
+
+            colorScanbuf =  the_hdr->alpha ? &scanbuf[1] : &scanbuf[0];
+
+            for (i = -the_hdr->alpha; i < the_hdr->ncolors; ++i) {
+                if (RLE_BIT(*the_hdr, i)) {
+                    colorScanbuf[i] = pixbuf;
+                    pixbuf += rowlen;
+                } else
+                    colorScanbuf[i] = 0;
+            }
+            *scanP = colorScanbuf;
+
+            if (retval != 0)
+                free(scanbuf);
+        }
+    }
+    return retval;
+}
+
+
+
+void
+rle_row_free(rle_hdr *    const the_hdr,
+             rle_pixel ** const scanP) {
+/*----------------------------------------------------------------------------
+  Free storage allocated by rle_row_alloc().
+
+  Inputs:
+       the_hdr:        Header structure as above.
+       scanP:          Pointer to first color channel in scanbuf.
+----------------------------------------------------------------------------*/
+    unsigned int i;
+
+    assert(the_hdr->alpha == 0 || the_hdr->alpha == 1);
+
+    rle_pixel ** const scanbuf = scanP - the_hdr->alpha;
+
+    for (i = 0; i < the_hdr->ncolors + the_hdr->alpha; i++) {
+        if (scanbuf[i]) {
+            free(scanbuf[i]);
             break;
         }
-    free( (char *)scanp );
+    }
+    free(scanbuf);
 }
 
 
