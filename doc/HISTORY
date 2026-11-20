@@ -4,6 +4,17 @@ Netpbm.
 CHANGE HISTORY 
 --------------
 
+26.11.20 BJH  Release 11.16.06
+
+              ppmtoxpm: fix missing transparency.  Broken in Netpbm 11.05
+              (December 2023).
+
+              pnmtorle, rletopnm: fix invalid memory access when image
+              contains transparency.  Broken in Netpbm 11.05 (December 2023).
+
+              pnmtorle: fix bug: produces blank image in certain cases.
+              Broken in Netpbm 11.05 (December 2023).
+
 26.11.15 BJH  Release 11.16.05
 
               Fix "color index exceeds colormap size" failure introduced

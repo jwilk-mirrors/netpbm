@@ -83,7 +83,7 @@ rle_pixel ***scanp;
     if ( the_hdr->alpha )
         scanbuf++;
 
-    for ( i = -the_hdr->alpha; i < the_hdr->ncolors; i++ )
+    for ( i = -the_hdr->alpha; i < (int)the_hdr->ncolors; i++ )
         if ( RLE_BIT( *the_hdr, i ) )
         {
             scanbuf[i] = pixbuf;

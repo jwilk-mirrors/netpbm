@@ -359,7 +359,7 @@ rle_hdr * the_hdr;
             the_hdr->priv.put.nblank = 0;
         }
         for ( mask = (the_hdr->alpha ? -1 : 0);
-              mask < the_hdr->ncolors;
+              mask < (int)the_hdr->ncolors;
               mask++)                   /* do all colors */
         {
             if ( ! bits[mask & 0xff] )
