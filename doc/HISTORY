@@ -37,6 +37,9 @@ not yet  BJH  Release 11.17.00
               (predecessors to rasttopnm and pnmtorast were in primordial
               Netpbm in 1989).
 
+              pnmtorle, rletopnm: fix invalid memory access when image
+              contains transparency.  Broken in Netpbm 11.05 (December 2023).
+
               pnmtorle: fix bug: produces blank image in certain cases.
               Broken in Netpbm 11.05 (December 2023).
 

@@ -153,7 +153,7 @@ rle_row_free(rle_hdr *    const the_hdr,
 
     rle_pixel ** const scanbuf = scanP - the_hdr->alpha;
 
-    for (i = 0; i < the_hdr->ncolors + the_hdr->alpha; i++) {
+    for (i = 0; i < (int)the_hdr->ncolors + the_hdr->alpha; i++) {
         if (scanbuf[i]) {
             free(scanbuf[i]);
             break;
