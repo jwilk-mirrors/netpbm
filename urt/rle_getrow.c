@@ -318,30 +318,26 @@ doByteData(rle_hdr *    const hdrP,
            const char * const inst,
            FILE *       const ifP,
            int          const channel,
-           int          const max_x,  /* End of the scanline */
            int *        const scanXP,
            rle_pixel ** const scancP) {
 /*----------------------------------------------------------------------------
    Execute a Byte Data instruction from the RLE image.  Put the data at
    *scancP and update *scancP to point past it.
 
-   Add to *scanXP the number of bytes we put at *scancP.
+   *scanXP at entry is the column number corresponding to the first of the
+   pixels of this instruction, and we update it to the column just after the
+   pixels.
 
    File *ifP is positioned after the two-byte instruction header.
+
+   We don't put pixels that are off the right edge of the image at *scancP.
+   We just discard them.
 -----------------------------------------------------------------------------*/
     int          scanX;
     rle_pixel *  scanc;
     int          arg;
     int          nc;
         /* Instruction argument: Number of bytes of data */
-    unsigned int bytesToFillCt;
-        /* Number of bytes to fill (taking into account limits of the
-           scanline)
-        */
-    unsigned int  bytesToSkipCt;
-        /* Number of bytes of data to skip (because they are beyond the
-           limits of the scanline)
-        */
 
     scanX = *scanXP;  /* initial value */
     scanc = *scancP;  /* initial value */
@@ -354,11 +350,19 @@ doByteData(rle_hdr *    const hdrP,
     nc = arg + 1;
 
     if (RLE_BIT(*hdrP, channel)) {
+        unsigned int bytesToFillCt;
+            /* Number of bytes to fill (taking into account limits of the
+               scanline)
+            */
+        unsigned int  bytesToSkipCt;
+            /* Number of bytes of data to skip (because they are beyond the
+               limits of the scanline)
+            */
         if (debug_f)
             pm_message("Read pixel data %d bytes (to %d):", nc, scanX + nc);
         /* Don't fill past end of scanline! */
-        if (scanX + nc > max_x) {
-            bytesToSkipCt = scanX + nc - max_x - 1;
+        if (scanX + nc > hdrP->xmax) {
+            bytesToSkipCt = scanX + nc - hdrP->xmax - 1;
             bytesToFillCt = nc - bytesToSkipCt;
         } else {
             bytesToSkipCt = 0;
@@ -406,10 +410,20 @@ doRunDataOp(rle_hdr *    const hdrP,
             const char * const inst,
             FILE *       const ifP,
             int          const channel,
-            int          const max_x,
             int *        const scanXP,
             rle_pixel ** const scancP) {
+/*----------------------------------------------------------------------------
+   Execute a Run Data instruction from the RLE image.  Put the data at
+   *scancP and update *scancP to point past it.
 
+   *scanXP at entry is the column number corresponding to the first of the
+   pixels, and we update it to the column just after the last of the pixels.
+
+   File *ifP is positioned after the two-byte instruction header.
+
+   We don't put pixels that are off the right edge of the image at *scancP.
+   We just discard them.
+-----------------------------------------------------------------------------*/
     int          scanX;
     rle_pixel *  scanc;
     short        word;
@@ -417,14 +431,6 @@ doRunDataOp(rle_hdr *    const hdrP,
     int          arg;
     int          nc;
         /* Instruction argument: Number of bytes of data */
-    unsigned int bytesToFillCt;
-        /* Number of bytes to fill (taking into account limits of the
-           scanline)
-        */
-    unsigned int  bytesToSkipCt;
-        /* Number of bytes of data to skip (because they are beyond the
-           limits of the scanline)
-        */
 
     scanX = *scanXP;  /* initial value */
     scanc = *scancP;  /* initial value */
@@ -443,8 +449,16 @@ doRunDataOp(rle_hdr *    const hdrP,
         pm_message("Run length %d (to %d), data %02x", nc, scanX, word);
 
     if (RLE_BIT(*hdrP, channel)) {
-        if (scanX > max_x) {
-            bytesToSkipCt = scanX - max_x - 1;
+        unsigned int bytesToFillCt;
+            /* Number of bytes to fill (taking into account limits of the
+               scanline)
+            */
+        unsigned int  bytesToSkipCt;
+            /* Number of bytes of data to skip (because they are beyond the
+               limits of the scanline)
+            */
+        if (scanX > hdrP->xmax) {
+            bytesToSkipCt = scanX - hdrP->xmax - 1;
             bytesToFillCt = nc - bytesToSkipCt;
         } else {
             bytesToSkipCt = 0;
@@ -512,13 +526,11 @@ rle_getrow(rle_hdr *    const hdrP,
     rle_pixel * scanc;
 
     int scanX; /* current X position */
-    int max_x;  /* End of the scanline */
     int channel;         /* current color channel */
     int nc;
     char inst[2];
 
     scanX = hdrP->xmin; /* initial value */
-    max_x = hdrP->xmax;  /* initial value */
     channel = 0; /* initial value */
     /* Clear to background if specified */
     if (hdrP->background != 1) {
@@ -587,11 +599,11 @@ rle_getrow(rle_hdr *    const hdrP,
             break;
 
         case RByteDataOp:
-            doByteData(hdrP, inst, ifP, channel, max_x, &scanX, &scanc);
+            doByteData(hdrP, inst, ifP, channel, &scanX, &scanc);
             break;
 
         case RRunDataOp:
-            doRunDataOp(hdrP, inst, ifP, channel, max_x, &scanX, &scanc);
+            doRunDataOp(hdrP, inst, ifP, channel, &scanX, &scanc);
             break;
 
         case REOFOp:
