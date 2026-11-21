@@ -47,15 +47,15 @@ for i in $@
       thinkjettopbm|\
       pamtojpegxl|\
       jpegxltopam)
-          grep --quiet $i $srcdir/../checkable-list || exit 1 ;;
+          fgrep -x --quiet $i $srcdir/../checkable-list || exit 1 ;;
       pnmtotiff)
-          grep --quiet pamtotiff $srcdir/../checkable-list || exit 1 ;;
+          fgrep -x --quiet pamtotiff $srcdir/../checkable-list || exit 1 ;;
       ppmtojpeg)
-          grep --quiet pnmtojpeg $srcdir/../checkable-list || exit 1 ;;
+          fgrep -x --quiet pnmtojpeg $srcdir/../checkable-list || exit 1 ;;
       pamrgbatopng)
-          grep --quiet pamtopng  $srcdir/../checkable-list || exit 1 ;;
+          fgrep -x --quiet pamtopng  $srcdir/../checkable-list || exit 1 ;;
       pngtopnm)
-	  grep --quiet pngtopam  $srcdir/../checkable-list || exit 1 ;;
+	  fgrep -x --quiet pngtopam  $srcdir/../checkable-list || exit 1 ;;
       zlib)
         [ "${ZLIB}" = "NONE" ] && exit 1 ;;		      
     esac

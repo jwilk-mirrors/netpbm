@@ -405,7 +405,7 @@ for i in $ordinary_testprogs
     # Programs that aren't built because of a configuration choice are
     # reported as "ok" in all-in-place.out .
 
-      grep --quiet $i "${srcdir}"/../checkable-list
+      fgrep -x --quiet $i "${srcdir}"/../checkable-list
       if [ $? = 1 ]; then
       echo "$i: program was not built" 1>&2
       echo "$i: ok"
