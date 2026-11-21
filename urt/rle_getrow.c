@@ -33,6 +33,7 @@
 #include <string.h>
 #include <stdio.h>
 
+#include "netpbm/pm_c_util.h"
 #include "netpbm/pm.h"
 #include "netpbm/mallocvar.h"
 
@@ -262,28 +263,21 @@ doSkipLines(rle_hdr *    const hdrP,
 static void
 doSetColor(rle_hdr *    const hdrP,
            const char * const inst,
-           rle_pixel ** const scanline,
            int *        const channelP,
-           int *        const scanXP,
-           rle_pixel ** const scancP) {
+           int *        const scanXP) {
 
     int channel;
-    int scanX;
 
     channel = DATUM(inst);  /* select color channel */
     if (channel == 255)
         channel = -1;
 
-    scanX = hdrP->xmin;
-
-    if (RLE_BIT(*hdrP, channel))
-        *scancP = scanline[channel] + scanX;
+    *scanXP = hdrP->xmin;
 
     if (debug_f)
-        pm_message("Set color to %d (reset x to %d)", channel, scanX);
+        pm_message("Set color to %d (reset x to %d)", channel, *scanXP);
 
     *channelP = channel;
-    *scanXP   = scanX;
 }
 
 
@@ -292,20 +286,17 @@ static void
 doSkipPixels(rle_hdr *    const hdrP,
              const char * const inst,
              FILE *       const ifP,
-             int *        const scanXP,
-             rle_pixel ** const scancP) {
+             int *        const scanXP) {
 
     short longData;
 
     if (LONGP(inst)) {
         VAXSHORT(longData, ifP);
         *scanXP += longData;
-        *scancP += longData;
         if (debug_f)
             pm_message("Skip %d pixels (to %d)", longData, *scanXP);
     } else {
         *scanXP += DATUM(inst);
-        *scancP += DATUM(inst);
         if (debug_f)
             pm_message("Skip %d pixels (to %d)", DATUM(inst), *scanXP);
     }
@@ -319,28 +310,28 @@ doByteData(rle_hdr *    const hdrP,
            FILE *       const ifP,
            int          const channel,
            int *        const scanXP,
-           rle_pixel ** const scancP) {
+           rle_pixel ** const scanline) {
 /*----------------------------------------------------------------------------
-   Execute a Byte Data instruction from the RLE image.  Put the data at
-   *scancP and update *scancP to point past it.
+   Read the rest of a Byte Data instruction from the RLE image and execute it.
 
-   *scanXP at entry is the column number corresponding to the first of the
-   pixels of this instruction, and we update it to the column just after the
-   pixels.
+   Put the samples in scanline buffer 'scanline', for channel 'channel'.
+
+   Put the samples at the proper column locations in *scanline.  *scanXP at
+   entry is the column number corresponding to the first pixel, and we update
+   it to the column just after the last pixel.
 
    File *ifP is positioned after the two-byte instruction header.
 
-   We don't put pixels that are off the right edge of the image at *scancP.
-   We just discard them.
+   Note that the pixels in this command may be out of frame (e.g. if *scanXP
+   is less than hdrP->xmin or there are more pixels in the command than the
+   width of he scanline).  We discard such pixels.
 -----------------------------------------------------------------------------*/
     int          scanX;
-    rle_pixel *  scanc;
     int          arg;
     int          nc;
         /* Instruction argument: Number of bytes of data */
 
     scanX = *scanXP;  /* initial value */
-    scanc = *scancP;  /* initial value */
 
     if (LONGP(inst)) {
         VAXSHORT(arg, ifP);
@@ -350,44 +341,53 @@ doByteData(rle_hdr *    const hdrP,
     nc = arg + 1;
 
     if (RLE_BIT(*hdrP, channel)) {
-        unsigned int bytesToFillCt;
-            /* Number of bytes to fill (taking into account limits of the
-               scanline)
-            */
-        unsigned int  bytesToSkipCt;
-            /* Number of bytes of data to skip (because they are beyond the
-               limits of the scanline)
-            */
+        unsigned int const endX = scanX + nc;
+
         if (debug_f)
             pm_message("Read pixel data %d bytes (to %d):", nc, scanX + nc);
-        /* Don't fill past end of scanline! */
-        if (scanX + nc > hdrP->xmax) {
-            bytesToSkipCt = scanX + nc - hdrP->xmax - 1;
-            bytesToFillCt = nc - bytesToSkipCt;
-        } else {
-            bytesToSkipCt = 0;
-            bytesToFillCt = nc;
-        }
-        fread((char *)scanc, 1, bytesToFillCt, ifP);
-        {
-            unsigned int i;
-            for (i = 0; i < bytesToSkipCt; ++i)
-                getc(ifP);
-        }
-        if (bytesToFillCt & 0x1)
-            getc(ifP);   /* throw away odd byte */
 
-        if (debug_f) {
-            unsigned int i;
-            for (i = 0; i < bytesToFillCt; ++i)
-                fprintf(stderr, "%02x", scanc[i]);
-            putc('\n', stderr);
+        /* Read off pixels that are out of frame to the left */
+        for (; scanX < hdrP->xmin; ++scanX)
+            getc(ifP);
+
+        if (scanX <= hdrP->xmax) {
+            /* Read and store pixels that are in frame */
+            unsigned int const inFrameCt = MIN(nc, hdrP->xmax - scanX + 1);
+
+            fread(&scanline[channel][scanX], 1, inFrameCt, ifP);
+
+            if (debug_f) {
+                unsigned int i;
+                for (i = 0; i < inFrameCt; ++i)
+                    fprintf(stderr, "%02x", scanline[channel][scanX + i]);
+                putc('\n', stderr);
+            }
+            scanX += inFrameCt;
         }
-        scanc += bytesToFillCt;
-        scanX += bytesToFillCt;
+        /* Read off pixels that are out of frame to the right */
+        for (; scanX < endX; ++scanX) {
+            pm_message("reading out of frame to right");
+            getc(ifP);
+        }
+        /* 26.11.21: I don't know what the following is; it seems to imply
+           the instruction always contains 16-bit words, so if the number of
+           bytes specified is odd, there is a byte of padding at the end.
+
+           However, the code as I found it tested the number of bytes stored
+           in the scanline for oddness rather than the full number in the
+           instruction, which could contain out-of-frame pixels.  I suspect
+           that was a bug, as the code reused the variable 'nc' and the
+           author may have been confused.
+        */
+        if (nc & 0x1) {
+            getc(ifP);   /* throw away odd byte */
+            pm_message("reading odd byte");
+        }
+
    } else {
         if (debug_f)
             pm_message("Discard pixel data %d bytes (to %d):", nc, scanX + nc);
+
         if (hdrP->priv.get.is_seek)
             fseek(ifP, ((nc + 1) / 2) * 2, 1);
         else {
@@ -395,12 +395,9 @@ doByteData(rle_hdr *    const hdrP,
             for (i = ((nc + 1) / 2) * 2; i > 0; --i)
                 getc(ifP);  /* discard it */
         }
-        scanc += nc;
         scanX += nc;
     }
-
     *scanXP = scanX;
-    *scancP = scanc;
 }
 
 
@@ -411,29 +408,29 @@ doRunDataOp(rle_hdr *    const hdrP,
             FILE *       const ifP,
             int          const channel,
             int *        const scanXP,
-            rle_pixel ** const scancP) {
+            rle_pixel ** const scanline) {
 /*----------------------------------------------------------------------------
-   Execute a Run Data instruction from the RLE image.  Put the data at
-   *scancP and update *scancP to point past it.
+   Read the rest of a Run Data instruction from the RLE image and execute it.
 
-   *scanXP at entry is the column number corresponding to the first of the
-   pixels, and we update it to the column just after the last of the pixels.
+   Put the samples in scanline buffer 'scanline', for channel 'channel'.
+
+   Put the samples at the proper column locations in *scanline.  *scanXP at
+   entry is the column number corresponding to the first pixel, and we update
+   it to the column just after the last pixel.
 
    File *ifP is positioned after the two-byte instruction header.
 
-   We don't put pixels that are off the right edge of the image at *scancP.
-   We just discard them.
+   Note that the pixels identified by this command may be out of frame
+   (e.g. if *scanXP is less than hdrP->xmin or there are more repetitions
+   specified than the width of he scanline).  We discard such pixels.
 -----------------------------------------------------------------------------*/
-    int          scanX;
-    rle_pixel *  scanc;
-    short        word;
-        /* Instructin argument: The byte to replicate */
-    int          arg;
-    int          nc;
-        /* Instruction argument: Number of bytes of data */
+    int const beginScanX = *scanXP;
 
-    scanX = *scanXP;  /* initial value */
-    scanc = *scancP;  /* initial value */
+    short     word;
+        /* Instruction argument: The byte to replicate */
+    int       arg;
+    int       nc;
+        /* Instruction argument: Number of repetitions */
 
     if (LONGP(inst)) {
         VAXSHORT(arg, ifP);
@@ -441,43 +438,29 @@ doRunDataOp(rle_hdr *    const hdrP,
         arg = DATUM(inst);
     nc = arg + 1;
 
-    scanX += nc;
-
     VAXSHORT(word, ifP);
 
     if (debug_f)
-        pm_message("Run length %d (to %d), data %02x", nc, scanX, word);
+        pm_message("Run length %d (to %d), data %02x",
+                   nc, beginScanX + nc, word);
 
     if (RLE_BIT(*hdrP, channel)) {
-        unsigned int bytesToFillCt;
-            /* Number of bytes to fill (taking into account limits of the
-               scanline)
-            */
-        unsigned int  bytesToSkipCt;
-            /* Number of bytes of data to skip (because they are beyond the
-               limits of the scanline)
-            */
-        if (scanX > hdrP->xmax) {
-            bytesToSkipCt = scanX - hdrP->xmax - 1;
-            bytesToFillCt = nc - bytesToSkipCt;
-        } else {
-            bytesToSkipCt = 0;
-            bytesToFillCt = nc;
-        }
+        unsigned int const ncInFrame =
+            MIN(hdrP->xmax + 1, beginScanX + nc) -
+            MAX(hdrP->xmin, beginScanX);
+
         /* We use a loop instead of memset if doing fewer than 10 repetitions
            because it is faster, at least on a Vax 11/785.
         */
-        if (bytesToFillCt >= 10) {
-            memset((char *)scanc, word, bytesToFillCt);
+        if (ncInFrame >= 10) {
+            memset(&scanline[channel][beginScanX], word, ncInFrame);
         } else {
             unsigned int i;
-            for (i = 0; i < bytesToFillCt; ++i)
-                scanc[i] = word;
+            for (i = 0; i < ncInFrame; ++i)
+                scanline[channel][beginScanX + i] = word;
         }
-        scanc += bytesToFillCt;
     }
-    *scanXP = scanX;
-    *scancP = scanc;
+    *scanXP = beginScanX + nc;
 }
 
 
@@ -523,8 +506,6 @@ rle_getrow(rle_hdr *    const hdrP,
 ---------------------------------------------------------------------------- */
     FILE * const ifP = hdrP->rle_file;
 
-    rle_pixel * scanc;
-
     int scanX; /* current X position */
     int channel;         /* current color channel */
     int nc;
@@ -566,66 +547,60 @@ rle_getrow(rle_hdr *    const hdrP,
         }
     }
 
-    /* If EOF has been encountered, return also */
-    if (hdrP->priv.get.is_eof)
-        return ++hdrP->priv.get.scan_y;
+    if (!hdrP->priv.get.is_eof) {
 
-    /* Otherwise, read and interpret instructions until a skipLines
-       instruction is encountered.
-    */
-    if (RLE_BIT(*hdrP, channel))
-        scanc = scanline[channel] + scanX;
-    else
-        scanc = NULL;
-    for (;;) {
-        inst[0] = getc(ifP);
-        inst[1] = getc(ifP);
-        if (feof(ifP)) {
-            hdrP->priv.get.is_eof = 1;
-            break;      /* <--- one of the exits */
+        /* Read and interpret instructions until a skipLines instruction is
+           encountered.
+        */
+        for (;;) {
+            inst[0] = getc(ifP);
+            inst[1] = getc(ifP);
+            if (feof(ifP)) {
+                hdrP->priv.get.is_eof = 1;
+                break;      /* <--- one of the exits */
+            }
+
+            switch(OPCODE(inst)) {
+            case RSkipLinesOp:
+                doSkipLines(hdrP, inst, ifP);
+                break;
+
+            case RSetColorOp:
+                doSetColor(hdrP, inst, &channel, &scanX);
+                break;
+
+            case RSkipPixelsOp:
+                doSkipPixels(hdrP, inst, ifP, &scanX);
+                break;
+
+            case RByteDataOp:
+                doByteData(hdrP, inst, ifP, channel, &scanX, scanline);
+                break;
+
+            case RRunDataOp:
+                doRunDataOp(hdrP, inst, ifP, channel, &scanX, scanline);
+                break;
+
+            case REOFOp:
+                doEOF(hdrP);
+                break;
+
+            default:
+                pm_error("rle_getrow: Unrecognized opcode: %d, reading %s",
+                         inst[0], hdrP->file_name);
+            }
+            if (OPCODE(inst) == RSkipLinesOp || OPCODE(inst) == REOFOp)
+                break;          /* <--- the other loop exit */
         }
 
-        switch(OPCODE(inst)) {
-        case RSkipLinesOp:
-            doSkipLines(hdrP, inst, ifP);
-            break;
-
-        case RSetColorOp:
-            doSetColor(hdrP, inst, scanline, &channel, &scanX, &scanc);
-            break;
-
-        case RSkipPixelsOp:
-            doSkipPixels(hdrP, inst, ifP, &scanX, &scanc);
-            break;
-
-        case RByteDataOp:
-            doByteData(hdrP, inst, ifP, channel, &scanX, &scanc);
-            break;
-
-        case RRunDataOp:
-            doRunDataOp(hdrP, inst, ifP, channel, &scanX, &scanc);
-            break;
-
-        case REOFOp:
-            doEOF(hdrP);
-            break;
-
-        default:
-            pm_error("rle_getrow: Unrecognized opcode: %d, reading %s",
-                     inst[0], hdrP->file_name);
+        /* If at end, skip the rest of a malformed image. */
+        if (hdrP->priv.get.scan_y >= hdrP->ymax) {
+            int const y = hdrP->priv.get.scan_y;
+            while (rle_getskip(hdrP) != 32768 )
+                ;
+            return y;
         }
-        if (OPCODE(inst) == RSkipLinesOp || OPCODE(inst) == REOFOp)
-            break;          /* <--- the other loop exit */
     }
-
-    /* If at end, skip the rest of a malformed image. */
-    if (hdrP->priv.get.scan_y >= hdrP->ymax) {
-        int const y = hdrP->priv.get.scan_y;
-        while (rle_getskip(hdrP) != 32768 )
-            ;
-        return y;
-    }
-
     return hdrP->priv.get.scan_y;
 }
 
