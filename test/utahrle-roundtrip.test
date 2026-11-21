@@ -1,11 +1,14 @@
 #! /bin/sh
 # This script tests: pnmtorle rletopnm
-# Also requires: pamchannel pamtopnm
+# Also requires: pgmtopbm pamchannel pamtopnm
 
-#Test 1.  Should produce 1571496937 33838, cksum of testimg.red
+#Test 1.  Should produce 281226646 481, cksum of maze.pbm
+pnmtorle maze.pbm | rletopnm | pgmtopbm -th | cksum
+
+#Test 2.  Should produce 1571496937 33838, cksum of testimg.red
 pamchannel -infile=testimg.ppm -tupletype="GRAYSCALE" 0 | pamtopnm | \
   pnmtorle | rletopnm | cksum
 
-#Test 2.  Should print 1926073387 101484, cksum of testimg.ppm
-pnmtorle testimg.ppm | \
-  rletopnm | cksum
+#Test 3.  Should print 1926073387 101484, cksum of testimg.ppm
+pnmtorle testimg.ppm | rletopnm | cksum
+
