@@ -251,6 +251,21 @@ rle_get_setup(rle_hdr * const hdrP) {
     hdrP->xmax = hdrP->xmin + vax_gshort(setup.hc_xlen) - 1;
     hdrP->ymax = hdrP->ymin + vax_gshort(setup.hc_ylen) - 1;
 
+    if (hdrP->xmin < 0)
+        pm_error("RLE header has negative minimum X value %d", hdrP->xmin);
+    if (hdrP->ymin < 0)
+        pm_error("RLE header has negative minimum Y value %d", hdrP->ymin);
+    if (hdrP->xmax < hdrP->xmin) {
+        pm_error("RLE header says left bound of frame (%d) is "
+                 "to the right of the right bound (%d)",
+                 hdrP->xmin, hdrP->xmax);
+    }
+    if (hdrP->ymax < hdrP->ymin) {
+        pm_error("RLE header says top bound of frame (%d) is "
+                 "below the bottom bound (%d)",
+                 hdrP->ymin, hdrP->ymax);
+    }
+
     hdrP->ncmap = setup.h_ncmap;
     hdrP->cmaplen = setup.h_cmaplen;
 

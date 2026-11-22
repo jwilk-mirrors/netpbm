@@ -41,7 +41,6 @@ not yet  BJH  Release 11.17.00
               contains transparency.  Broken in Netpbm 11.05 (December 2023).
               Thanks Pranav Krishna and AFL++ with AddressSanitizer/UBSan.
 
-
               pnmtorle: fix bug: produces blank image in certain cases.
               Broken in Netpbm 11.05 (December 2023).  Thanks Pranav Krishna
               and AFL++ with AddressSanitizer/UBSan.
@@ -50,6 +49,12 @@ not yet  BJH  Release 11.17.00
               specify pixels to the left or right of the image frame.  Always
               broken (rletopnm was new in Netpbm 9.0 (April 2000).  Found by
               Pranav Krishna with AFL++ with AddressSanitizer/UBSan.
+
+              rletopnm: fix invalid memory reference and set when header
+              specifies invalid image frame (e.g. negative column number, top
+              row greater than bottom row).  Always broken (rletopnm was new
+              in Netpbm 9.0 (April 2000).  Found by Pranav Krishna with AFL++
+              with AddressSanitizer/UBSan.
 
               jbigtopnm: fix bug: fails with bogus error message about
               incremental BIE not continuing previous one when multi-BIE image
