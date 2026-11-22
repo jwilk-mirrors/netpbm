@@ -255,15 +255,12 @@ rle_get_setup(rle_hdr * const hdrP) {
     hdrP->cmaplen = setup.h_cmaplen;
 
     if (hdrP->ncmap > 0) {
-        rle_map * cmapP;
         int error;
 
-        readColormap(hdrP->ncmap, hdrP->cmaplen, ifP, &cmapP, &error);
+        readColormap(hdrP->ncmap, hdrP->cmaplen, ifP, &hdrP->cmap, &error);
 
         if (error != 0)
             return error;
-        else
-            hdrP->cmap = cmapP;
     }
 
     if (setup.h_flags & H_COMMENT)
