@@ -127,7 +127,7 @@ typedef
              *      fileptr long        Position in output file.
              */
             union {
-                struct {
+                struct getState {
                     int scan_y,
                         vert_skip;
                     char is_eof,    /* Set when EOF or EofOp encountered. */

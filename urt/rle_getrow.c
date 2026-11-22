@@ -113,29 +113,85 @@ readComments(rle_hdr * const hdrP) {
 
 
 
+static void
+readColormap(int        const ncmap,
+             int        const cmaplen,
+             FILE *     const ifP,
+             rle_map ** const cmapP,
+             int *      const errorP) {
+
+    int const maplen = ncmap * (1 << cmaplen);
+
+    rle_map *       cmap;
+    unsigned char * maptemp;
+
+    MALLOCARRAY(cmap, maplen);
+    if (!cmap) {
+        pm_message("Unable to allocate memory for color map for %u "
+                   "channels of %u colors each", ncmap, 1 << cmaplen);
+        *errorP = RLE_NO_SPACE;
+    } else {
+        MALLOCARRAY(maptemp, 2 * maplen);
+        if (!maplen) {
+            pm_message("Unable to allocate buffer for assembly of "
+                       "color map of size %u", maplen);
+            *errorP = RLE_NO_SPACE;
+        } else {
+            unsigned int i;
+
+            *errorP = 0;
+
+            fread(maptemp, 2, maplen, ifP);
+
+            for (i = 0; i < maplen; ++i)
+                cmap[i] = vax_gshort(&maptemp[i * 2]);
+
+            free(maptemp);
+            *cmapP = cmap;
+        }
+    }
+}
+
+
+
+static void
+initializeState(struct getState * const stateP,
+                rle_hdr *         const hdrP,
+                FILE *            const ifP) {
+
+    /* Initialize state for rle_getrow */
+
+    stateP->scan_y    = hdrP->ymin;
+    stateP->vert_skip = 0;
+    stateP->is_eof    = 0;
+    stateP->is_seek   = ftell(ifP) > 0;
+
+    debug_f = 0;
+}
+
+
+
 int
 rle_get_setup(rle_hdr * const hdrP) {
 /*-----------------------------------------------------------------------------
-  Read the initialization information from an RLE file.
-  Inputs:
-    hdrP:    Contains pointer to the input file.
-  Outputs:
-    hdrP:    Initialized with information from the input file.
-  Returns
-     0  on success,
+  Read the initialization information from an RLE file.  Return it as
+  certain fields in *hdrP.
+
+  But some fields of *hdrP are also input.
+
+  Return value:
+      0 on success,
      -1 if the file is not an RLE file,
      -2 if malloc of the color map failed,
      -3 if an immediate EOF is hit (empty input file)
      -4 if an EOF is encountered reading the setup information.
-  Assumptions:
-    input file is positioned to the "magic" number in an RLE file (usually
-    first byte of the file).
-  Algorithm:
-    Read in the setup info and fill in *hdrP.
+
+   The input file must be positioned to the beginning of the RLE image.
 ---------------------------------------------------------------------------- */
+    FILE * const ifP = hdrP->rle_file;
+
     struct XtndRsetup setup;
     short magic;
-    FILE * ifP = hdrP->rle_file;
     int i;
 
     /* Clear old stuff out of the header. */
@@ -186,7 +242,7 @@ rle_get_setup(rle_hdr * const hdrP) {
         hdrP->background = 1;
     if (setup.h_flags & H_ALPHA) {
         hdrP->alpha = 1;
-        RLE_SET_BIT( *hdrP, RLE_ALPHA );
+        RLE_SET_BIT(*hdrP, RLE_ALPHA);
     } else
         hdrP->alpha = 0;
 
@@ -199,24 +255,15 @@ rle_get_setup(rle_hdr * const hdrP) {
     hdrP->cmaplen = setup.h_cmaplen;
 
     if (hdrP->ncmap > 0) {
-        int const maplen = hdrP->ncmap * (1 << hdrP->cmaplen);
+        rle_map * cmapP;
+        int error;
 
-        unsigned int i;
-        unsigned char *maptemp;
+        readColormap(hdrP->ncmap, hdrP->cmaplen, ifP, &cmapP, &error);
 
-        MALLOCARRAY(hdrP->cmap, maplen);
-        MALLOCARRAY(maptemp, 2 * maplen);
-        if (hdrP->cmap == NULL || maptemp == NULL) {
-            pm_error("Malloc failed for color map of size %d*%d "
-                     "in rle_get_setup, reading '%s'",
-                     hdrP->ncmap, (1 << hdrP->cmaplen),
-                     hdrP->file_name );
-            return RLE_NO_SPACE;
-        }
-        fread(maptemp, 2, maplen, ifP);
-        for (i = 0; i < maplen; ++i)
-            hdrP->cmap[i] = vax_gshort(&maptemp[i * 2]);
-        free(maptemp);
+        if (error != 0)
+            return error;
+        else
+            hdrP->cmap = cmapP;
     }
 
     if (setup.h_flags & H_COMMENT)
@@ -224,12 +271,7 @@ rle_get_setup(rle_hdr * const hdrP) {
     else
         hdrP->comments = NULL;
 
-    /* Initialize state for rle_getrow */
-    hdrP->priv.get.scan_y = hdrP->ymin;
-    hdrP->priv.get.vert_skip = 0;
-    hdrP->priv.get.is_eof = 0;
-    hdrP->priv.get.is_seek = ftell(ifP) > 0;
-    debug_f = 0;
+    initializeState(&hdrP->priv.get, hdrP, ifP);
 
     if (!feof(ifP))
         return RLE_SUCCESS; /* success! */
@@ -379,10 +421,8 @@ doByteData(rle_hdr *    const hdrP,
            that was a bug, as the code reused the variable 'nc' and the
            author may have been confused.
         */
-        if (nc & 0x1) {
+        if (nc & 0x1)
             getc(ifP);   /* throw away odd byte */
-            pm_message("reading odd byte");
-        }
 
    } else {
         if (debug_f)
