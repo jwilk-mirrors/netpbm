@@ -249,9 +249,11 @@ readRleHeader(FILE * const ifP,
                 hdr.cmap[hdr.bg_color[1]+256]>>8,
                 hdr.cmap[hdr.bg_color[2]+512]>>8);
     }
-    if (hdr.comments)
-        for (i = 0; hdr.comments[i] != NULL; i++)
-            HMSG("%s", hdr.comments[i]);
+    if (hdr.comments) {
+        unsigned int i;
+        for (i = 0; hdr.comments[i]; ++i)
+            HMSG("Comment %u: %s", i, hdr.comments[i]);
+    }
 }
 
 
