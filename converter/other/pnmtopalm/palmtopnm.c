@@ -862,7 +862,7 @@ readPackBitsRow16(FILE *          const ifP,
 
             unsigned int k;
 
-            for (k = 0; (k < nonrunlength) && (j + k <= bytesPerRow); ++k) {
+            for (k = 0; (k < nonrunlength) && (j + k < bytesPerRow); ++k) {
                 unsigned char inval;
                 pm_readcharu(ifP, &inval);
                 palmrow[j + k] = inval;
@@ -907,11 +907,13 @@ readPackBitsRow(FILE *          const ifP,
                 memset(palmrow + j, inval, runlength);
             j += runlength;
         } else {
+            /* It's a nonrun - output the next words literally */
+            /* We just read the stream of shorts as a stream of chars */
             unsigned int const nonrunlength = controlNum + 1;
 
             unsigned int k;
 
-            for (k = 0; k < nonrunlength && j + k <= bytesPerRow; ++k) {
+            for (k = 0; k < nonrunlength && j + k < bytesPerRow; ++k) {
                 unsigned char inval;
                 pm_readcharu(ifP, &inval);
                 palmrow[j + k] = inval;

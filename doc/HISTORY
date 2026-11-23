@@ -147,6 +147,10 @@ not yet  BJH  Release 11.17.00
               value for bits per pixel.  Always broken (gouldtoppm was in
               primordial Netpbm in 1989).  Found and diagnosed by Jing Hao Hu.
 
+              palmtopnm: fix memory corruption with invalid input image.
+              Broken in Netpbm 10.71 (June 2015).  Found by Pranav Krishna
+              with AFL++ with AddressSanitizer/UBSan.
+
               ppmglobe: fix bug: accepts only color names for the background
               color specification.  Thanks Scott Pakin.
 
