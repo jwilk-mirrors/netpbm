@@ -2402,7 +2402,7 @@ unpackBuf(unsigned char *  const packed,
           unsigned char ** const expandedP,
           unsigned int *   const expandedLenP) {
 /*----------------------------------------------------------------------------
-   Expand the bit string 'packed', which is 'packedLen' bytes long
+   Expand the bit string 'packed', which is 'packedLen' bytes long,
    into an array of bytes, with one byte per pixel.  Each 'bitsPerPixel'
    of 'packed' is a pixel.
 
@@ -2451,15 +2451,19 @@ unpackBuf(unsigned char *  const packed,
 }
 
 
-
 static void
 unpackUncompressedBits(FILE *          const ifP,
                        struct Raster   const raster,
-                       unsigned int    const rowBytes,
+                       unsigned int    const rowByteCt,
                        unsigned int    const bitsPerPixel) {
 /*----------------------------------------------------------------------------
    Read the raster from the file into 'raster'.  The data in the file is not
    compressed (but may still be packed multiple pixels per byte).
+
+   Each row is represented by 'rowByteCt' bytes in the file, and those bytes
+   contain pixels packed at 'bitsPerPixel' bits per pixel.
+
+   'rowByteCt' must not be greater than 256.
 
    In PICT terminology, it appears that compression is called
    "packing" and I don't know what packing is called.  But we don't
@@ -2472,7 +2476,7 @@ unpackUncompressedBits(FILE *          const ifP,
     if (verbose)
         pm_message("Bits are not packed");
 
-    MALLOCARRAY(linebuf, rowBytes + 100);
+    MALLOCARRAY(linebuf, rowByteCt + 100);
     if (linebuf == NULL)
         pm_error("can't allocate memory for line buffer");
 
@@ -2482,11 +2486,14 @@ unpackUncompressedBits(FILE *          const ifP,
         unsigned char * rasterRow;
         unsigned int i;
 
-        rasterRow = raster.bytes + rowOfRect * raster.rowSize;
+        rasterRow = &raster.bytes[rowOfRect * raster.rowSize];
 
-        readBytes(ifP, rowBytes, linebuf);
+        assert(rowByteCt <= 256);
+        assert(bitsPerPixel > 0);
 
-        unpackBuf(linebuf, rowBytes, bitsPerPixel,
+        readBytes(ifP, rowByteCt, linebuf);
+
+        unpackBuf(linebuf, rowByteCt, bitsPerPixel,
                   &bytePixels, &expandedByteCount);
 
         assert(expandedByteCount <= raster.rowSize);
@@ -2785,10 +2792,10 @@ interpretCompressedLine(unsigned char * const linebuf,
 
 
 static void
-unpackCompressedBits(FILE *          const ifP,
-                     struct Raster   const raster,
-                     unsigned int    const rowBytes,
-                     unsigned int    const bitsPerPixel) {
+unpackCompressedBits(FILE *        const ifP,
+                     struct Raster const raster,
+                     unsigned int  const rowByteCt,
+                     unsigned int  const bitsPerPixel) {
 /*----------------------------------------------------------------------------
    Set the raster bytes of 'raster' with bytes read from *ifP.
 
@@ -2800,19 +2807,19 @@ unpackCompressedBits(FILE *          const ifP,
    use that confusing terminology in this program, except when talking
    to the user.
 -----------------------------------------------------------------------------*/
-    unsigned int const llsize = rowBytes > 200 ? 2 : 1;
+    unsigned int const llsize = rowByteCt > 200 ? 2 : 1;
         /* Width in bytes of the field at the beginning of a line that tells
            how long (in bytes) the line is.  See notes above about this
            computation.
         */
-    unsigned int row;
+    unsigned int    row;
     unsigned char * linebuf;
-    unsigned int linebufSize;
+    unsigned int    linebufSize;
 
     if (verbose)
         pm_message("Bits are packed");
 
-    linebufSize = rowBytes;
+    linebufSize = rowByteCt;
     MALLOCARRAY(linebuf, linebufSize);
     if (linebuf == NULL)
         pm_error("can't allocate memory for line buffer");
@@ -2846,36 +2853,28 @@ unpackCompressedBits(FILE *          const ifP,
 
 
 static void
-unpackbits(FILE *           const ifP,
-           struct Rect *    const boundsP,
-           Word             const rowBytesArg,
-           unsigned int     const bitsPerPixel,
-           struct Raster *  const rasterP) {
+unpackbits(FILE *          const ifP,
+           struct Rect *   const boundsP,
+           Word            const rowByteCtArg,
+           unsigned int    const bitsPerPixel,
+           struct Raster * const rasterP) {
 
     unsigned int const rectHeight = boundsP->bottom - boundsP->top;
     unsigned int const rectWidth  = boundsP->right  - boundsP->left;
 
     struct Raster raster;
-    unsigned int rowBytes;
+    unsigned int rowByteCt;
 
     stage = "unpacking packbits";
 
-    if (verbose)
-        pm_message("rowBytes = %u, bitsPerPixel = %u",
-                   rowBytesArg, bitsPerPixel);
-
     allocateRaster(&raster, rectWidth, rectHeight, bitsPerPixel);
 
-    rowBytes = rowBytesArg ? rowBytesArg : raster.rowSize;
+    rowByteCt = rowByteCtArg ? rowByteCtArg : raster.rowSize;
 
-    if (verbose)
-        pm_message("raster.rowSize: %u bytes; file row = %u bytes",
-                   raster.rowSize, rowBytes);
-
-    if (rowBytes < 8)
-        unpackUncompressedBits(ifP, raster, rowBytes, bitsPerPixel);
+    if (rowByteCt < 8)
+        unpackUncompressedBits(ifP, raster, rowByteCt, bitsPerPixel);
     else
-        unpackCompressedBits(ifP, raster, rowBytes, bitsPerPixel);
+        unpackCompressedBits(ifP, raster, rowByteCt, bitsPerPixel);
 
     *rasterP = raster;
 }
@@ -2883,26 +2882,29 @@ unpackbits(FILE *           const ifP,
 
 
 static void
-interpretRowBytesWord(Word           const rowBytesWord,
-                      bool *         const pixMapP,
-                      unsigned int * const rowBytesP) {
+interpretRowByteCtWord(Word           const rowByteCtWord,
+                       bool *         const pixMapP,
+                       unsigned int * const rowByteCtP) {
 
-    *pixMapP   = !!(rowBytesWord & 0x8000);
-    *rowBytesP = rowBytesWord & 0x7fff;
+    *pixMapP   = !!(rowByteCtWord & 0x8000);
+    *rowByteCtP = rowByteCtWord & 0x7fff;
 
-    if (verbose)
+    if (verbose) {
         pm_message("PCT says %s, %u bytes per row",
-                   *pixMapP ? "pixmap" : "bitmap", *rowBytesP);
+                   *pixMapP ? "pixmap" : "bitmap", *rowByteCtP);
+    }
 }
 
 
 
-/* this just skips over a version 2 pattern.  Probably will return
- * a pattern in the fabled complete version.
- */
 static void
 readPattern(FILE * const ifP) {
+/*----------------------------------------------------------------------------
+   If it's a version 2 pattern skip over it.
 
+   Design note: We will probably return a pattern for version 2 in the
+   fabled complete version.
+-----------------------------------------------------------------------------*/
     Word PatType;
 
     stage = "Reading a pattern";
@@ -2915,19 +2917,19 @@ readPattern(FILE * const ifP) {
         skip(ifP, 5); /* RGB for pattern */
         break;
     case 1: {
-        Word rowBytesWord;
+        Word rowByteCtWord;
         bool pixMap;
-        unsigned int rowBytes;
+        unsigned int rowByteCt;
         struct PixMap p;
         struct Raster raster;
         struct RGBColor * ct;
 
         skip(ifP, 8); /* old pattern data */
-        rowBytesWord = readWord(ifP);
-        interpretRowBytesWord(rowBytesWord, &pixMap, &rowBytes);
+        rowByteCtWord = readWord(ifP);
+        interpretRowByteCtWord(rowByteCtWord, &pixMap, &rowByteCt);
         readPixmap(ifP, &p);
         ct = readColorTable(ifP);
-        unpackbits(ifP, &p.Bounds, rowBytes, p.pixelSize, &raster);
+        unpackbits(ifP, &p.Bounds, rowByteCt, p.pixelSize, &raster);
         freeRaster(raster);
         free(ct);
     } break;
@@ -4082,16 +4084,14 @@ DHDVText(FILE *          const ifP,
 
 
 
-/*
- * This could use readPixmap, but I'm too lazy to hack readPixmap.
- */
-
 static void
 directBits(FILE *          const ifP,
            struct Canvas * const canvasP,
            BlitList *      const blitListP,
            unsigned int    const pictVersion,
            bool            const skipRegion) {
+
+    /* This could use readPixmap, but I'm too lazy to hack readPixmap. */
 
     struct PixMap   p;
     struct Rect     srcRect;
@@ -4175,7 +4175,7 @@ doPixmap(FILE *          const ifP,
          struct Canvas * const canvasP,
          BlitList *      const blitListP,
          int             const version,
-         Word            const rowBytes,
+         Word            const rowByteCt,
          int             const is_region) {
 /*----------------------------------------------------------------------------
    Do a paletted image.
@@ -4216,7 +4216,7 @@ doPixmap(FILE *          const ifP,
 
     stage = "unpacking rectangle";
 
-    unpackbits(ifP, &p.Bounds, rowBytes, p.pixelSize, &raster);
+    unpackbits(ifP, &p.Bounds, rowByteCt, p.pixelSize, &raster);
 
     blit(srcRect, p.Bounds, raster, canvasP, blitListP, 8,
          dstRect, picFrame, rowlen, colorTable, mode);
@@ -4232,8 +4232,8 @@ doBitmap(FILE *          const ifP,
          struct Canvas * const canvasP,
          BlitList *      const blitListP,
          int             const version,
-         int             const rowBytes,
-         int             const is_region) {
+         int             const rowByteCt,
+         int             const isRegion) {
 /*----------------------------------------------------------------------------
    Do a bitmap.  That's one bit per pixel, 0 is white, 1 is black.
 
@@ -4257,12 +4257,12 @@ doBitmap(FILE *          const ifP,
     if (verbose)
         pm_message("transfer mode = %s", constName(transfer_name, mode));
 
-    if (is_region)
+    if (isRegion)
         skipPolyOrRegion(ifP, canvasP, blitListP, version);
 
     stage = "unpacking rectangle";
 
-    unpackbits(ifP, &Bounds, rowBytes, 1, &raster);
+    unpackbits(ifP, &Bounds, rowByteCt, 1, &raster);
 
     blit(srcRect, Bounds, raster, canvasP, blitListP, 8,
          dstRect, picFrame, rowlen, color_table, mode);
@@ -4280,19 +4280,19 @@ BitsRect(FILE *          const ifP,
          BlitList *      const blitListP,
          int             const version) {
 
-    Word rowBytesWord;
+    Word rowByteCtWord;
     bool pixMap;
-    unsigned int rowBytes;
+    unsigned int rowByteCt;
 
-    stage = "Reading rowBytes word for bitsrect";
-    rowBytesWord = readWord(ifP);
+    stage = "Reading row byte count+pix/bitmap word for bitsrect";
+    rowByteCtWord = readWord(ifP);
 
-    interpretRowBytesWord(rowBytesWord, &pixMap, &rowBytes);
+    interpretRowByteCtWord(rowByteCtWord, &pixMap, &rowByteCt);
 
     if (pixMap)
-        doPixmap(ifP, canvasP, blitListP, version, rowBytes, 0);
+        doPixmap(ifP, canvasP, blitListP, version, rowByteCt, 0);
     else
-        doBitmap(ifP, canvasP, blitListP, version, rowBytes, 0);
+        doBitmap(ifP, canvasP, blitListP, version, rowByteCt, 0);
 }
 
 
@@ -4305,19 +4305,19 @@ BitsRegion(FILE *          const ifP,
            BlitList *      const blitListP,
            int             const version) {
 
-    Word rowBytesWord;
+    Word rowByteCtWord;
     bool pixMap;
-    unsigned int rowBytes;
+    unsigned int rowByteCt;
 
-    stage = "Reading rowBytes for bitsregion";
-    rowBytesWord = readWord(ifP);
+    stage = "Reading row byte count for bitsregion";
+    rowByteCtWord = readWord(ifP);
 
-    interpretRowBytesWord(rowBytesWord, &pixMap, &rowBytes);
+    interpretRowByteCtWord(rowByteCtWord, &pixMap, &rowByteCt);
 
     if (pixMap)
-        doPixmap(ifP, canvasP, blitListP, version, rowBytes, 1);
+        doPixmap(ifP, canvasP, blitListP, version, rowByteCt, 1);
     else
-        doBitmap(ifP, canvasP, blitListP, version, rowBytes, 1);
+        doBitmap(ifP, canvasP, blitListP, version, rowByteCt, 1);
 }
 
 
