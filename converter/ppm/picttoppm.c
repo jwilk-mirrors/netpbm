@@ -2452,6 +2452,35 @@ unpackBuf(unsigned char *  const packed,
 
 
 static void
+validateUncompressedRowByteCt(unsigned int const rowByteCt,
+                              unsigned int const bitsPerPixel,
+                              unsigned int const width) {
+/*----------------------------------------------------------------------------
+   Validate that the number of file bytes for a raster row 'rowByteCt' is
+   consistent with a row of width 'width' pixels, assuming 'bitsPerPixel' bits
+   per pixel and no compression.
+
+   We consider it consistent if it includes padding to a multiple of 16
+   pixels, because we've seen clues that the format allows that.  So e.g.  if
+   'width' is 8 and bitsPerPixel is 4, we consider 'rowByteCt' of 4 to 8 to be
+   valid.  4 is 8 pixels times 4 bits per pixel divided by 8 bits per byte,
+   while 8 is the same but for 16 pixels (next multiple of 16 pixels).
+-----------------------------------------------------------------------------*/
+    unsigned int const bitsPerByte = 8;
+    unsigned int const paddedWidth = ROUNDUP(width, 16);
+
+    if (rowByteCt < ROUNDDIVUP(width * bitsPerPixel, bitsPerByte) ||
+        rowByteCt > ROUNDDIVUP(paddedWidth * bitsPerPixel, bitsPerByte)) {
+
+        pm_error("Input file specifies %u bytes per row, uncompressed, "
+                 "but that is not consistent with %u pixels per row "
+                 "and %u bits per pixel", rowByteCt, width, bitsPerPixel);
+    }
+}
+
+
+
+static void
 unpackUncompressedBits(FILE *          const ifP,
                        struct Raster   const raster,
                        unsigned int    const rowByteCt,
@@ -2871,9 +2900,10 @@ unpackbits(FILE *          const ifP,
 
     rowByteCt = rowByteCtArg ? rowByteCtArg : raster.rowSize;
 
-    if (rowByteCt < 8)
+    if (rowByteCt < 8) {
+        validateUncompressedRowByteCt(rowByteCt, bitsPerPixel, rectWidth);
         unpackUncompressedBits(ifP, raster, rowByteCt, bitsPerPixel);
-    else
+    } else
         unpackCompressedBits(ifP, raster, rowByteCt, bitsPerPixel);
 
     *rasterP = raster;

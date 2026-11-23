@@ -109,6 +109,11 @@ not yet  BJH  Release 11.17.00
               in primordial Netpbm in 1989).  Found and diagnosed by Jing Hao
               Hu.
 
+              picttoppm: fix memory corruption when header specifies in
+              invalid number of bytes per row in uncompressed format.  Always
+              broken (picttoppm was in primordial Netpbm in 1989).  Found by
+              Pranav Krishna with AFL++ with AddressSanitizer/UBSan.
+
               spctoppm: fix arbitrary memory access with invalid input that
               contains too much raster data.  Always broken (spctoppm was in
               primordial Netpbm in 1989).  Found and diagnosed by Jing Hao Hu.
