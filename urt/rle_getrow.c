@@ -30,6 +30,7 @@
  * $Id: rle_getrow.c,v 3.0.1.5 1992/03/04 19:33:08 spencer Exp spencer $
  */
 
+#include <assert.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -56,59 +57,91 @@ static int     debug_f;     /* If non-zero, print debug info. */
 
 
 static void
-readComments(rle_hdr * const hdrP) {
+readComments(FILE *         const ifP,
+             const char *** const commentsP) {
+/*----------------------------------------------------------------------------
+   Read comments at the current position of *ifP in the RLE image.
 
-    FILE * ifP = hdrP->rle_file;
+   Return them as a newly malloc'ed array of ASCIIZ strings *commentsP.
+   Those strings are all in a newly malloc'ed heap; the first comment is the
+   first thing in that heap, so you can free the heap through that pointer.
 
-    /* There are comments */
+   Each comments in the image is supposed to be terminated by NUL, but if
+   the last one is missing NUL, we assume it.
+-----------------------------------------------------------------------------*/
     short comlen;
-    char * cp;
 
     VAXSHORT(comlen, ifP); /* get comment length */
 
     if (comlen < 0)
         pm_error("Negative comment length in RLE header");
     else if (comlen > 0) {
-        unsigned int const evenlen = (comlen + 1) & ~1;    /* make it even */
+        unsigned int const wordlen = ROUNDDIVUP(comlen, 2);
+            /* Number of 16-bit words in file to hold the comment */
+        unsigned int const heaplen = comlen + 1;
+            /* Add one for a NUL terminator for the last comment that we
+               add if it is missing.
+            */
 
         char * commentHeap;
-        unsigned int i;
+            /* The heap of comments, each ending in NUL, as read from the
+               RLE header and ultimately fixed if necessary by adding a NUL.
+            */
+        unsigned int commentCt;
+            /* Number of comments in the heap */
+        unsigned int comlenProper;
+            /* The length of the comment heap, after we fixed it up if
+               necessary to properly end in NUL.
+            */
+        unsigned int i, j;
+        const char ** comments;
 
-        MALLOCARRAY(commentHeap, evenlen);
+        MALLOCARRAY(commentHeap, MIN(heaplen, wordlen * 2));
 
         if (commentHeap == NULL) {
-            pm_error("Malloc failed for comment buffer of size %u "
-                     "in rle_get_setup, reading '%s'",
-                     evenlen, hdrP->file_name );
+            pm_error("Malloc failed for comment heap of size %u "
+                     "reading RLE header", heaplen);
         }
-        fread(commentHeap, 1, evenlen, ifP);
-        /* Count the comments */
-        for (i = 0, cp = commentHeap; cp < commentHeap + comlen; ++cp) {
-            if (*cp == '\0')
-                ++i;
-        }
-        ++i;            /* extra for NULL pointer at end */
-        /* Get space to put pointers to comments */
-        MALLOCARRAY(hdrP->comments, i);
-        if (hdrP->comments == NULL) {
-            pm_error("Malloc failed for %d comment pointers "
-                     "in rle_get_setup, reading '%s'",
-                     i, hdrP->file_name );
-        }
-        /* Set comment heap */
-        hdrP->comments[0] = commentHeap;
+        fread(commentHeap, 2, wordlen, ifP);
 
-        /* Set pointers to individual comments in the heap as
-          hdrP->comments[1], hdrP->comments[2], etc.
+        /* Supply missing NUL if necessary */
+        if (commentHeap[comlen-1] == '\0')
+            comlenProper = comlen;
+        else {
+            commentHeap[comlen] = '\0';
+            comlenProper = comlen + 1;
+        }
+        /* Count the comments */
+        for (i = 0, commentCt = 0; i < comlenProper; ++i) {
+            if (commentHeap[i] == '\0')
+                ++commentCt;
+        }
+
+        /* Get space to put pointers to comments */
+        MALLOCARRAY(comments, commentCt + 1);
+            /* +1 for terminating NULL entry */
+
+        if (comments == NULL) {
+            pm_error("Malloc failed for %u comment pointers "
+                     "in reading RLE header", commentCt);
+        }
+        /* Set pointers to individual comments in the 'commentHeap' as
+           comments[0], comments[1], etc.
         */
-        for (i = 1, cp = commentHeap + 1;
-             cp < commentHeap + comlen;
-             ++cp)
-            if (*(cp - 1) == '\0')
-                hdrP->comments[i++] = cp;
-        hdrP->comments[i] = NULL;
+
+        comments[0] = &commentHeap[0];
+
+        for (i = 1, j = 1; j < comlenProper; ++j) {
+            if (commentHeap[j-1] == '\0')
+
+                comments[i++] = &commentHeap[j];
+        }
+        assert(i == commentCt);
+        comments[i] = NULL;  /* terminating NULL */
+
+        *commentsP = comments;
     } else
-        hdrP->comments = NULL;
+        *commentsP = NULL;
 }
 
 
@@ -279,7 +312,7 @@ rle_get_setup(rle_hdr * const hdrP) {
     }
 
     if (setup.h_flags & H_COMMENT)
-        readComments(hdrP);
+        readComments(hdrP->rle_file, &hdrP->comments);
     else
         hdrP->comments = NULL;
 
