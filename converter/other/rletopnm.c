@@ -205,19 +205,16 @@ readRleHeader(FILE * const ifP,
         HMSG("Grayscale image.");
     }
     else {
-        fprintf(stderr,
-                "ncolors = %d, ncmap = %d, I don't know how to handle this!",
-                hdr.ncolors, hdr.ncmap);
-        exit(-1);
+        pm_error("ncolors = %d, ncmap = %d, I don't know how to handle this!",
+                 hdr.ncolors, hdr.ncmap);
     }
     if (hdr.alpha == 0) {
         HMSG("No alpha channel.");
     } else if (hdr.alpha == 1) {
         HMSG("Alpha channel exists!");
     } else {
-        fprintf(stderr, "alpha = %d, I don't know how to handle this!\n",
-                hdr.alpha);
-        exit(-1);
+        pm_error("alpha = %d, I don't know how to handle this!",
+                 hdr.alpha);
     }
     switch (hdr.background) {
     case 0:
