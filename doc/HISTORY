@@ -56,6 +56,11 @@ not yet  BJH  Release 11.17.00
               in Netpbm 9.0 (April 2000).  Found by Pranav Krishna with AFL++
               with AddressSanitizer/UBSan.
 
+              rletopnm: fix invalid memory reference and set when image has
+              fewer than 3 channels Always broken (rletopnm was new in Netpbm
+              9.0 (April 2000).  Found by Pranav Krishna with AFL++ with
+              AddressSanitizer/UBSan.
+
               rletopnm: fix invalid memory reference when comments in RLE
               header lack a NUL terminator.  Always broken (rletopnm was new
               in Netpbm 9.0 (April 2000).

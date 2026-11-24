@@ -244,8 +244,14 @@ rle_get_setup(rle_hdr * const hdrP) {
 
     /* Extract information from setup */
     hdrP->ncolors = setup.h_ncolors;
-    for (i = 0; i < hdrP->ncolors; ++i)
-        RLE_SET_BIT(*hdrP, i);
+
+    /* Set the channel bitmap for the color (i.e. not alpha) channels */
+    for (i = 0; i < RLE_ALPHA; ++i) {
+        if (i < setup.h_ncolors)
+            RLE_SET_BIT(*hdrP, i);
+        else
+            RLE_CLR_BIT(*hdrP, i);
+    }
 
     if (!(setup.h_flags & H_NO_BACKGROUND) && setup.h_ncolors > 0) {
         rle_pixel * bg_color;
@@ -273,11 +279,14 @@ rle_get_setup(rle_hdr * const hdrP) {
         hdrP->background = 2;
     else
         hdrP->background = 1;
+
     if (setup.h_flags & H_ALPHA) {
         hdrP->alpha = 1;
         RLE_SET_BIT(*hdrP, RLE_ALPHA);
-    } else
+    } else {
         hdrP->alpha = 0;
+        RLE_CLR_BIT(*hdrP, RLE_ALPHA);
+    }
 
     hdrP->xmin = vax_gshort(setup.hc_xpos);
     hdrP->ymin = vax_gshort(setup.hc_ypos);
@@ -452,10 +461,9 @@ doByteData(rle_hdr *    const hdrP,
             scanX += inFrameCt;
         }
         /* Read off pixels that are out of frame to the right */
-        for (; scanX < endX; ++scanX) {
-            pm_message("reading out of frame to right");
+        for (; scanX < endX; ++scanX)
             getc(ifP);
-        }
+
         /* 26.11.21: I don't know what the following is; it seems to imply
            the instruction always contains 16-bit words, so if the number of
            bytes specified is odd, there is a byte of padding at the end.
