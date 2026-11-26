@@ -233,7 +233,7 @@ readRleHeader(FILE *         const ifP,
     }
     if (hdr.ncolors == 1 && hdr.ncmap == 3) {
         HMSG(" (%d %d %d)",
-                hdr.cmap[hdr.bg_color[0]]>>8,
+                hdr.cmap[hdr.bg_color[0]+  0]>>8,
                 hdr.cmap[hdr.bg_color[0]+256]>>8,
                 hdr.cmap[hdr.bg_color[0]+512]>>8);
     } else if (hdr.ncolors == 3 && hdr.ncmap == 3) {
