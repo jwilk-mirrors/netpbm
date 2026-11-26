@@ -75,13 +75,12 @@ struct CmdlineInfo {
 
 
 
-static enum Visual visual;
 static unsigned int maplen;
 
 
 
 static void
-parseCommandLine(int argc, char ** argv,
+parseCommandLine(int argc, const char ** argv,
                  struct CmdlineInfo * const cmdlineP) {
 /*----------------------------------------------------------------------------
    Note that many of the strings that this function returns in the
@@ -109,7 +108,7 @@ parseCommandLine(int argc, char ** argv,
     opt.short_allowed = TRUE;  /* We have short (old-fashioned) options */
     opt.allowNegNum = FALSE;  /* We have no parms that are negative numbers */
 
-    pm_optParseOptions3(&argc, argv, opt, sizeof(opt), 0);
+    pm_optParseOptions4(&argc, argv, opt, sizeof(opt), 0);
         /* Uses and sets argc, argv, and all of *cmdlineP. */
 
     if (!alphaoutSpec)
@@ -166,6 +165,7 @@ readRleHeader(FILE *         const ifP,
               bool           const headerDump,
               unsigned int * const widthP,
               unsigned int * const heightP,
+              enum Visual *  const visualP,
               rle_map **     const colormapP) {
 
     int rc;
@@ -183,21 +183,21 @@ readRleHeader(FILE *         const ifP,
     HMSG("Image size: %ux%u", *widthP, *heightP);
 
     if (hdr.ncolors == 1 && hdr.ncmap == 3) {
-        visual = PSEUDOCOLOR;
+        *visualP = PSEUDOCOLOR;
         *colormapP = hdr.cmap;
         assert(hdr.cmaplen < sizeof(maplen)*8);
         maplen = (1 << hdr.cmaplen);
         HMSG("Mapped color image with a map of length %u.", maplen);
     } else if (hdr.ncolors == 3 && hdr.ncmap == 0) {
-        visual = DIRECTCOLOR;
+        *visualP = DIRECTCOLOR;
         HMSG("24 bit color image, no colormap.");
     } else if (hdr.ncolors == 3 && hdr.ncmap == 3) {
-        visual = TRUECOLOR;
+        *visualP = TRUECOLOR;
         *colormapP = hdr.cmap;
         maplen = (1 << hdr.cmaplen);
         HMSG("24 bit color image with color map of length %u", maplen);
     } else if (hdr.ncolors == 1 && hdr.ncmap == 0) {
-        visual = GRAYSCALE;
+        *visualP = GRAYSCALE;
         HMSG("Grayscale image.");
     } else {
         pm_error("ncolors = %d, ncmap = %d, I don't know how to handle this!",
@@ -339,6 +339,7 @@ doScanline(rle_pixel **    const scanline,
 static void
 writePpmRaster(unsigned int    const width,
                unsigned int    const height,
+               enum Visual     const visual,
                const rle_map * const colormap,
                FILE *          const imageoutFileP,
                FILE *          const alphaFileP) {
@@ -444,7 +445,7 @@ writePgmRaster(unsigned int const width,
 
 
 int
-main(int argc, char ** argv) {
+main(int argc, const char ** argv) {
 
     struct CmdlineInfo cmdline;
     FILE * ifP;
@@ -452,9 +453,10 @@ main(int argc, char ** argv) {
     FILE * alphaFileP;
     const char * fname;
     unsigned int width, height;
+    enum Visual visual;
     rle_map * colormap;
 
-    pnm_init( &argc, argv );
+    pm_proginit(&argc, argv);
 
     parseCommandLine(argc, argv, &cmdline);
 
@@ -479,13 +481,12 @@ main(int argc, char ** argv) {
         imageoutFileP = stdout;
 
     hdr = *rle_hdr_init(NULL);  /* initial value */
-    rle_names(&hdr, cmd_name( argv ), fname, 0);
+    rle_names(&hdr, cmd_name((char **)argv), fname, 0);
 
     readRleHeader(ifP, cmdline.headerdump || cmdline.verbose,
-                  &width, &height, &colormap);
+                  &width, &height, &visual, &colormap);
     if (cmdline.headerdump)
         exit(0);
-
 
     if (alphaFileP)
         pgm_writepgminit(alphaFileP, width, height, RLE_MAXVAL, 0);
@@ -503,7 +504,8 @@ main(int argc, char ** argv) {
             pm_message("Writing ppm file.");
         if (imageoutFileP)
             ppm_writeppminit(imageoutFileP, width, height, RLE_MAXVAL, 0);
-        writePpmRaster(width, height, colormap, imageoutFileP, alphaFileP);
+        writePpmRaster(width, height, visual, colormap,
+                       imageoutFileP, alphaFileP);
         break;
     }
 
