@@ -309,7 +309,14 @@ rle_get_setup(rle_hdr * const hdrP) {
     }
 
     hdrP->ncmap = setup.h_ncmap;
-    hdrP->cmaplen = setup.h_cmaplen;
+
+    if (setup.h_cmaplen < 0)
+        pm_error("color map length field in RLE header is negative");
+    else if (setup.h_cmaplen > 16)
+        pm_error("Invalid color map length 2^%d in RLE header.  "
+                 "Maximum allowed is 2^16", setup.h_cmaplen);
+    else
+        hdrP->cmaplen = setup.h_cmaplen;
 
     if (hdrP->ncmap > 0) {
         int error;
@@ -401,6 +408,36 @@ doSkipPixels(rle_hdr *    const hdrP,
 
 
 static void
+validateRlePixel(rle_hdr   const hdr,
+                 rle_pixel const pixel) {
+/*----------------------------------------------------------------------------
+   Abort program is 'pixel' is not a valid value in a scanline.
+
+   In particular, ensure it is non-negative and if it is a colormap index,
+   is within the colormap.
+-----------------------------------------------------------------------------*/
+    if (pixel < 0)
+        pm_error("Negative value %d in RLE scanline", pixel);
+    else {
+        if (hdr.ncmap) {
+            /* There is a colormap, so this is a color index */
+            unsigned int const maplen = (1 << hdr.cmaplen);
+
+            assert(hdr.cmaplen < sizeof(maplen) * 8);
+                /* By definition of 'rle_hdr' */
+
+            if (pixel >= maplen) {
+                pm_error("Color index %u in RLE scanline "
+                         "exceeds the color map size %u",
+                         pixel, maplen);
+            }
+        }
+    }
+}
+
+
+
+static void
 doByteData(rle_hdr *    const hdrP,
            const char * const inst,
            FILE *       const ifP,
@@ -450,7 +487,12 @@ doByteData(rle_hdr *    const hdrP,
             /* Read and store pixels that are in frame */
             unsigned int const inFrameCt = MIN(nc, hdrP->xmax - scanX + 1);
 
+            unsigned int i;
+
             fread(&scanline[channel][scanX], 1, inFrameCt, ifP);
+
+            for (i = 0; i < inFrameCt; ++i)
+                validateRlePixel(*hdrP, scanline[channel][scanX + i]);
 
             if (debug_f) {
                 unsigned int i;
@@ -541,6 +583,8 @@ doRunDataOp(rle_hdr *    const hdrP,
         unsigned int const ncInFrame =
             MIN(hdrP->xmax + 1, beginScanX + nc) -
             MAX(hdrP->xmin, beginScanX);
+
+        validateRlePixel(*hdrP, word);
 
         /* We use a loop instead of memset if doing fewer than 10 repetitions
            because it is faster, at least on a Vax 11/785.

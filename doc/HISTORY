@@ -70,6 +70,12 @@ not yet  BJH  Release 11.17.00
               2000).  Found by Pranav Krishna with AFL++ with
               AddressSanitizer/UBSan.
 
+              rletopnm: fix invalid memory reference when invalid RLE image
+              has negative or excessive colormap size or contains an out of
+              bounds color index.  Always broken (rletopnm was new in Netpbm
+              9.0 (April 2000).  Found by Pranav Krishna with AFL++ with
+              AddressSanitizer/UBSan.
+
               jbigtopnm: fix bug: fails with bogus error message about
               incremental BIE not continuing previous one when multi-BIE image
               is of certain dimension.  Always broken (jbigtopnm was new in
