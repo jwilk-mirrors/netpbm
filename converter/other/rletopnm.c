@@ -39,9 +39,7 @@
 #define _BSD_SOURCE 1      /* Make sure strdup() is in string.h */
 #define _XOPEN_SOURCE 500  /* Make sure strdup() is in string.h */
 
-/*-----------------------------------------------------------------------------
- * System includes.
- */
+#include <assert.h>
 #include <string.h>
 #include <stdio.h>
 #define NO_DECLARE_MALLOC
@@ -54,10 +52,9 @@
 #include "nstring.h"
 
 #define HMSG if (headerDump) pm_message
-#define GRAYSCALE   001 /* 8 bits, no colormap */
-#define PSEUDOCOLOR 010 /* 8 bits, colormap */
-#define TRUECOLOR   011 /* 24 bits, colormap */
-#define DIRECTCOLOR 100 /* 24 bits, no colormap */
+
+enum Visual {GRAYSCALE, PSEUDOCOLOR, TRUECOLOR, DIRECTCOLOR};
+
 #define RLE_MAXVAL 255
 /*
  * Utah type declarations.
@@ -79,11 +76,9 @@ struct CmdlineInfo {
 
 
 
-/*
- * Other declarations.
- */
-static int visual, maplen;
-static int width, height;
+static enum Visual visual;
+static unsigned int maplen;
+static unsigned int width, height;
 
 
 
@@ -173,38 +168,37 @@ readRleHeader(FILE * const ifP,
               bool   const headerDump) {
 
     int rc;
-    int  i;
+
     hdr.rle_file = ifP;
+
     rc = rle_get_setup(&hdr);
     if (rc != 0)
         reportRleGetSetupError(rc);
 
     width = hdr.xmax - hdr.xmin + 1;
+
     height = hdr.ymax - hdr.ymin + 1;
+
     HMSG("Image size: %dx%d", width, height);
+
     if (hdr.ncolors == 1 && hdr.ncmap == 3) {
         visual = PSEUDOCOLOR;
         colormap = hdr.cmap;
+        assert(hdr.cmaplen < sizeof(maplen)*8);
         maplen = (1 << hdr.cmaplen);
-        HMSG("Mapped color image with a map of length %d.",
-                maplen);
-    }
-    else if (hdr.ncolors == 3 && hdr.ncmap == 0) {
+        HMSG("Mapped color image with a map of length %u.", maplen);
+    } else if (hdr.ncolors == 3 && hdr.ncmap == 0) {
         visual = DIRECTCOLOR;
         HMSG("24 bit color image, no colormap.");
-    }
-    else if (hdr.ncolors == 3 && hdr.ncmap == 3) {
+    } else if (hdr.ncolors == 3 && hdr.ncmap == 3) {
         visual = TRUECOLOR;
         colormap = hdr.cmap;
         maplen = (1 << hdr.cmaplen);
-        HMSG(
-                "24 bit color image with color map of length %d" ,maplen);
-    }
-    else if (hdr.ncolors == 1 && hdr.ncmap == 0) {
+        HMSG("24 bit color image with color map of length %u", maplen);
+    } else if (hdr.ncolors == 1 && hdr.ncmap == 0) {
         visual = GRAYSCALE;
         HMSG("Grayscale image.");
-    }
-    else {
+    } else {
         pm_error("ncolors = %d, ncmap = %d, I don't know how to handle this!",
                  hdr.ncolors, hdr.ncmap);
     }
@@ -231,18 +225,19 @@ readRleHeader(FILE * const ifP,
         HMSG("Unknown background flag!");
         break;
     }
-    if (hdr.background == 2)
+    if (hdr.background == 2) {
+        unsigned int i;
         for (i = 0; i < hdr.ncolors; i++)
             HMSG(" %d", hdr.bg_color[i]);
+    }
     if (hdr.ncolors == 1 && hdr.ncmap == 3) {
         HMSG(" (%d %d %d)",
                 hdr.cmap[hdr.bg_color[0]]>>8,
                 hdr.cmap[hdr.bg_color[0]+256]>>8,
                 hdr.cmap[hdr.bg_color[0]+512]>>8);
-    }
-    else if (hdr.ncolors == 3 && hdr.ncmap == 3) {
+    } else if (hdr.ncolors == 3 && hdr.ncmap == 3) {
         HMSG(" (%d %d %d)",
-                hdr.cmap[hdr.bg_color[0]]>>8,
+                hdr.cmap[hdr.bg_color[0]+  0]>>8,
                 hdr.cmap[hdr.bg_color[1]+256]>>8,
                 hdr.cmap[hdr.bg_color[2]+512]>>8);
     }
@@ -256,19 +251,99 @@ readRleHeader(FILE * const ifP,
 
 
 static void
+doScanline(rle_pixel ** const scanline,
+           enum Visual  const visual,
+           unsigned int const width,
+           bool         const haveAlpha,
+           pixel *      const pixelrow,
+           gray *       const alpharow) {
+/*----------------------------------------------------------------------------
+   Convert RLE scanline 'scanline' to libnetpbm format 'pixelrow' and
+   'alpharow'.
+
+   N.B. 'scanline' is an array that can have a negative index.  In
+   particular, the alpha channel is scanline[-1].
+-----------------------------------------------------------------------------*/
+    switch (visual) {
+    case GRAYSCALE: {   /* 8 bits without colormap */
+        unsigned int x;
+
+        for (x = 0; x < width; ++x) {
+            pixval const r = scanline[0][x];
+            pixval const g = scanline[0][x];
+            pixval const b = scanline[0][x];
+
+            PPM_ASSIGN(pixelrow[x], r, g, b);
+
+            if (haveAlpha)
+                alpharow[x] = scanline[-1][x];
+            else
+                alpharow[x] = 0;
+        }
+    } break;
+    case TRUECOLOR: {   /* 24 bits with colormap */
+        unsigned int x;
+
+        for (x = 0; x < width; ++x) {
+            pixval const r = colormap[scanline[0][x]+  0]>>8;
+            pixval const g = colormap[scanline[1][x]+256]>>8;
+            pixval const b = colormap[scanline[2][x]+512]>>8;
+
+            PPM_ASSIGN(pixelrow[x], r, g, b);
+
+            if (haveAlpha)
+                alpharow[x] = colormap[scanline[-1][x]];
+            else
+                alpharow[x] = 0;
+        }
+    } break;
+    case DIRECTCOLOR: { /* 24 bits without colormap */
+        unsigned int x;
+
+        for (x = 0; x < width; ++x) {
+            pixval const r = scanline[0][x];
+            pixval const g = scanline[1][x];
+            pixval const b = scanline[2][x];
+
+            PPM_ASSIGN(pixelrow[x], r, g, b);
+
+            if (haveAlpha)
+                alpharow[x] = scanline[-1][x];
+            else
+                alpharow[x] = 0;
+        }
+    } break;
+    case PSEUDOCOLOR: { /* 8 bits with colormap */
+        unsigned int x;
+
+        for (x = 0; x < width; ++x) {
+            pixval const r = colormap[scanline[0][x]+  0]>>8;
+            pixval const g = colormap[scanline[0][x]+256]>>8;
+            pixval const b = colormap[scanline[0][x]+512]>>8;
+
+            PPM_ASSIGN(pixelrow[x], r, g, b);
+
+            if (haveAlpha)
+                alpharow[x] = colormap[scanline[-1][x]];
+            else
+                alpharow[x] = 0;
+        }
+    } break;
+    }
+}
+
+
+
+static void
 writePpmRaster(FILE * const imageoutFileP,
                FILE * const alphaFileP) {
 
-    rle_pixel ***scanlines, **scanline;
-    pixval r, g, b;
-    pixel *pixelrow;
-    gray *alpharow;
+    rle_pixel ***scanlines;
+    pixel * pixelrow;
+    gray *  alpharow;
 
-    int scan;
-    int x;
-    /*
-     *  Allocate some stuff.
-     */
+    unsigned int scan;
+
     pixelrow = ppm_allocrow(width);
     alpharow = pgm_allocrow(width);
 
@@ -282,76 +357,22 @@ writePpmRaster(FILE * const imageoutFileP,
         if (rc < 0)
             pm_error("Failed to allocate memory for a scanline");
     }
-    /*
-     * Loop through those scan lines.
-     */
+
     for (scan = 0; scan < height; ++scan)
         rle_getrow(&hdr, scanlines[height - scan - 1]);
+
     for (scan = 0; scan < height; ++scan) {
-        scanline = scanlines[scan];
-        switch (visual) {
-        case GRAYSCALE:    /* 8 bits without colormap */
-            for (x = 0; x < width; x++) {
-                r = scanline[0][x];
-                g = scanline[0][x];
-                b = scanline[0][x];
-                PPM_ASSIGN(pixelrow[x], r, g, b);
-                if (hdr.alpha)
-                    alpharow[x] = scanline[-1][x];
-                else
-                    alpharow[x] = 0;
-            }
-            break;
-        case TRUECOLOR:    /* 24 bits with colormap */
-            for (x = 0; x < width; x++) {
-                r = colormap[scanline[0][x]]>>8;
-                g = colormap[scanline[1][x]+256]>>8;
-                b = colormap[scanline[2][x]+512]>>8;
-                PPM_ASSIGN(pixelrow[x], r, g, b);
-                if (hdr.alpha)
-                    alpharow[x] = colormap[scanline[-1][x]];
-                else
-                    alpharow[x] = 0;
-            }
-            break;
-        case DIRECTCOLOR:  /* 24 bits without colormap */
-            for (x = 0; x < width; x++) {
-                r = scanline[0][x];
-                g = scanline[1][x];
-                b = scanline[2][x];
-                PPM_ASSIGN(pixelrow[x], r, g, b);
-                if (hdr.alpha)
-                    alpharow[x] = scanline[-1][x];
-                else
-                    alpharow[x] = 0;
-            }
-            break;
-        case PSEUDOCOLOR:  /* 8 bits with colormap */
-            for (x = 0; x < width; x++) {
-                r = colormap[scanline[0][x]]>>8;
-                g = colormap[scanline[0][x]+256]>>8;
-                b = colormap[scanline[0][x]+512]>>8;
-                PPM_ASSIGN(pixelrow[x], r, g, b);
-                if (hdr.alpha)
-                    alpharow[x] = colormap[scanline[-1][x]];
-                else
-                    alpharow[x] = 0;
-            }
-            break;
-        default:
-            break;
-        }
-        /*
-         * Write the scan line.
-         */
+        doScanline(scanlines[scan], visual, width, !!alphaFileP,
+                   pixelrow, alpharow);
+
         if (imageoutFileP)
             ppm_writeppmrow(imageoutFileP, pixelrow, width, RLE_MAXVAL, 0);
+
         if (alphaFileP)
             pgm_writepgmrow(alphaFileP, alpharow, width, RLE_MAXVAL, 0);
 
-    } /* end of for scan = 0 to height */
+    }
 
-    /* Free scanline memory. */
     for (scan = 0; scan < height; ++scan)
         rle_row_free(&hdr, scanlines[scan]);
     free (scanlines);
