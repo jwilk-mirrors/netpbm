@@ -60,7 +60,6 @@ enum Visual {GRAYSCALE, PSEUDOCOLOR, TRUECOLOR, DIRECTCOLOR};
  * Utah type declarations.
  */
 static rle_hdr hdr;
-static rle_map * colormap;
 
 
 struct CmdlineInfo {
@@ -78,7 +77,6 @@ struct CmdlineInfo {
 
 static enum Visual visual;
 static unsigned int maplen;
-static unsigned int width, height;
 
 
 
@@ -164,8 +162,11 @@ reportRleGetSetupError(int const rleGetSetupRc) {
 
 
 static void
-readRleHeader(FILE * const ifP,
-              bool   const headerDump) {
+readRleHeader(FILE *         const ifP,
+              bool           const headerDump,
+              unsigned int * const widthP,
+              unsigned int * const heightP,
+              rle_map **     const colormapP) {
 
     int rc;
 
@@ -175,15 +176,15 @@ readRleHeader(FILE * const ifP,
     if (rc != 0)
         reportRleGetSetupError(rc);
 
-    width = hdr.xmax - hdr.xmin + 1;
+    *widthP  = hdr.xmax - hdr.xmin + 1;
 
-    height = hdr.ymax - hdr.ymin + 1;
+    *heightP = hdr.ymax - hdr.ymin + 1;
 
-    HMSG("Image size: %dx%d", width, height);
+    HMSG("Image size: %ux%u", *widthP, *heightP);
 
     if (hdr.ncolors == 1 && hdr.ncmap == 3) {
         visual = PSEUDOCOLOR;
-        colormap = hdr.cmap;
+        *colormapP = hdr.cmap;
         assert(hdr.cmaplen < sizeof(maplen)*8);
         maplen = (1 << hdr.cmaplen);
         HMSG("Mapped color image with a map of length %u.", maplen);
@@ -192,7 +193,7 @@ readRleHeader(FILE * const ifP,
         HMSG("24 bit color image, no colormap.");
     } else if (hdr.ncolors == 3 && hdr.ncmap == 3) {
         visual = TRUECOLOR;
-        colormap = hdr.cmap;
+        *colormapP = hdr.cmap;
         maplen = (1 << hdr.cmaplen);
         HMSG("24 bit color image with color map of length %u", maplen);
     } else if (hdr.ncolors == 1 && hdr.ncmap == 0) {
@@ -251,12 +252,13 @@ readRleHeader(FILE * const ifP,
 
 
 static void
-doScanline(rle_pixel ** const scanline,
-           enum Visual  const visual,
-           unsigned int const width,
-           bool         const haveAlpha,
-           pixel *      const pixelrow,
-           gray *       const alpharow) {
+doScanline(rle_pixel **    const scanline,
+           enum Visual     const visual,
+           unsigned int    const width,
+           bool            const haveAlpha,
+           const rle_map * const colormap,
+           pixel *         const pixelrow,
+           gray *          const alpharow) {
 /*----------------------------------------------------------------------------
    Convert RLE scanline 'scanline' to libnetpbm format 'pixelrow' and
    'alpharow'.
@@ -335,12 +337,15 @@ doScanline(rle_pixel ** const scanline,
 
 
 static void
-writePpmRaster(FILE * const imageoutFileP,
-               FILE * const alphaFileP) {
+writePpmRaster(unsigned int    const width,
+               unsigned int    const height,
+               const rle_map * const colormap,
+               FILE *          const imageoutFileP,
+               FILE *          const alphaFileP) {
 
     rle_pixel ***scanlines;
-    pixel * pixelrow;
-    gray *  alpharow;
+    pixel *      pixelrow;
+    gray *       alpharow;
 
     unsigned int scan;
 
@@ -362,7 +367,7 @@ writePpmRaster(FILE * const imageoutFileP,
         rle_getrow(&hdr, scanlines[height - scan - 1]);
 
     for (scan = 0; scan < height; ++scan) {
-        doScanline(scanlines[scan], visual, width, !!alphaFileP,
+        doScanline(scanlines[scan], visual, width, !!alphaFileP, colormap,
                    pixelrow, alpharow);
 
         if (imageoutFileP)
@@ -383,18 +388,18 @@ writePpmRaster(FILE * const imageoutFileP,
 
 
 static void
-writePgmRaster(FILE * const imageoutFileP,
-               FILE * const alphaFileP) {
+writePgmRaster(unsigned int const width,
+               unsigned int const height,
+               FILE *       const imageoutFileP,
+               FILE *       const alphaFileP) {
 /*----------------------------------------------------------------------------
    Write the PGM image data
 -----------------------------------------------------------------------------*/
     rle_pixel ***scanlines, **scanline;
     gray * pixelrow;
     gray * alpharow;
-    int scan;
-    /*
-     *  Allocate some stuff.
-     */
+    unsigned int scan;
+
     pixelrow = pgm_allocrow(width);
     alpharow = pgm_allocrow(width);
 
@@ -408,14 +413,12 @@ writePgmRaster(FILE * const imageoutFileP,
         if (rc < 0)
             pm_error("Failed to allocate memory for a scanline");
     }
-    /*
-     * Loop through those scan lines.
-     */
+
     for (scan = 0; scan < height; ++scan)
         rle_getrow(&hdr, scanlines[height - scan - 1]);
 
     for (scan = 0; scan < height; ++scan) {
-        int x;
+        unsigned int x;
         scanline = scanlines[scan];
         for (x = 0; x < width; ++x) {
             pixelrow[x] = scanline[0][x];
@@ -429,9 +432,8 @@ writePgmRaster(FILE * const imageoutFileP,
         if (alphaFileP)
             pgm_writepgmrow(alphaFileP, alpharow, width, RLE_MAXVAL, 0);
 
-        }   /* end of for scan = 0 to height */
+    }
 
-    /* Free scanline memory. */
     for (scan = 0; scan < height; ++scan)
         rle_row_free(&hdr, scanlines[scan]);
     free(scanlines);
@@ -448,7 +450,9 @@ main(int argc, char ** argv) {
     FILE * ifP;
     FILE * imageoutFileP;
     FILE * alphaFileP;
-    char * fname;
+    const char * fname;
+    unsigned int width, height;
+    rle_map * colormap;
 
     pnm_init( &argc, argv );
 
@@ -474,44 +478,32 @@ main(int argc, char ** argv) {
     else
         imageoutFileP = stdout;
 
-
-    /*
-     * Open the file.
-     */
-    /* Initialize header. */
-    hdr = *rle_hdr_init(NULL);
+    hdr = *rle_hdr_init(NULL);  /* initial value */
     rle_names(&hdr, cmd_name( argv ), fname, 0);
 
-    /*
-     * Read the rle file header.
-     */
-    readRleHeader(ifP, cmdline.headerdump || cmdline.verbose);
+    readRleHeader(ifP, cmdline.headerdump || cmdline.verbose,
+                  &width, &height, &colormap);
     if (cmdline.headerdump)
         exit(0);
 
-    /*
-     * Write the alpha file header
-     */
+
     if (alphaFileP)
         pgm_writepgminit(alphaFileP, width, height, RLE_MAXVAL, 0);
 
-    /*
-     * Write the pnm file header.
-     */
     switch (visual) {
     case GRAYSCALE:   /* 8 bits without colormap -> pgm */
         if (cmdline.verbose)
             pm_message("Writing pgm file.");
         if (imageoutFileP)
             pgm_writepgminit(imageoutFileP, width, height, RLE_MAXVAL, 0);
-        writePgmRaster(imageoutFileP, alphaFileP);
+        writePgmRaster(width, height, imageoutFileP, alphaFileP);
         break;
     default:      /* anything else -> ppm */
         if (cmdline.verbose)
             pm_message("Writing ppm file.");
         if (imageoutFileP)
             ppm_writeppminit(imageoutFileP, width, height, RLE_MAXVAL, 0);
-        writePpmRaster(imageoutFileP, alphaFileP);
+        writePpmRaster(width, height, colormap, imageoutFileP, alphaFileP);
         break;
     }
 
