@@ -573,6 +573,11 @@ pcx256ColToPpm(FILE *       const ifP,
         cols = headerCols;
 
     MALLOCARRAY2(image, rows, bytesPerLine);
+    if (!image) {
+        pm_error("Failed to allocate memory for %u-row image, "
+                 "%u bytes per row",
+                 rows, bytesPerLine);
+    }
 
     for (row = 0; row < rows; ++row)
         getPCXRow(ifP, image[row], bytesPerLine);
