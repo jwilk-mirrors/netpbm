@@ -20,12 +20,12 @@
 #define LEAF_MAXVAL 255
 
 static void
-leaf_init(FILE *  const fp,
-          int *   const colsP,
-          int *   const rowsP,
-          int *   const depthP,
-          int *   const ncolorsP,
-          pixel * const colors) {
+readLeafHeader(FILE *  const fp,
+               int *   const colsP,
+               int *   const rowsP,
+               int *   const depthP,
+               int *   const ncolorsP,
+               pixel * const colors) {
 
     unsigned char buf[256];
     unsigned char compressed;
@@ -36,6 +36,7 @@ leaf_init(FILE *  const fp,
     long magic;
 
     pm_readbiglong(fp, &magic);
+
     if ((uint32_t)magic != 0x894f5053)
         pm_error("Bad magic number.  First 4 bytes should be "
                  "0x894f5053 but are instead 0x%08x", (unsigned)magic);
@@ -113,76 +114,94 @@ leaf_init(FILE *  const fp,
 
 
 int
-main(int argc, char * argv[]) {
+main(int argc, const char * argv[]) {
 
     pixval const maxval = LEAF_MAXVAL;
 
-    FILE *ifd;
+    FILE * ifP;
     pixel colormap[MAXCOLORS];
-    int rows, cols, row, col, depth, ncolors;
+    int rows, cols;
+    int depth;
+    int ncolors;
 
-
-    ppm_init(&argc, argv);
+    pm_proginit(&argc, argv);
 
     if (argc-1 > 1)
         pm_error("Too many arguments.  Only argument is ileaf file name");
 
     if (argc-1 == 1)
-        ifd = pm_openr(argv[1]);
+        ifP = pm_openr(argv[1]);
     else
-        ifd = stdin;
+        ifP = stdin;
 
-    leaf_init(ifd, &cols, &rows, &depth, &ncolors, colormap);
+    readLeafHeader(ifP, &cols, &rows, &depth, &ncolors, colormap);
 
     if ((depth == 8) && (ncolors == 0)) {
         /* gray image */
         gray * grayrow;
         unsigned int row;
-        pgm_writepgminit( stdout, cols, rows, maxval, 0 );
+        pgm_writepgminit(stdout, cols, rows, maxval, 0);
         grayrow = pgm_allocrow(cols);
         for (row = 0; row < rows; ++row) {
             unsigned int col;
-            for ( col = 0; col < cols; ++col)
-                grayrow[col] = (gray)fgetc(ifd);
+            for (col = 0; col < cols; ++col)
+                grayrow[col] = (gray)fgetc(ifP);
             if (cols % 2)
-                fgetc (ifd); /* padding */
+                fgetc (ifP); /* padding */
             pgm_writepgmrow(stdout, grayrow, cols, maxval, 0);
         }
         pgm_freerow(grayrow);
     } else if (depth == 24) {
+        /* true color */
         pixel * pixrow;
         unsigned int row;
+
         ppm_writeppminit(stdout, cols, rows, maxval, 0);
+
         pixrow = ppm_allocrow(cols);
-        /* true color */
+
         for (row = 0; row < rows; ++row) {
+            unsigned int col;
+
             for (col = 0; col < cols; ++col)
-                PPM_PUTR(pixrow[col], fgetc(ifd));
-            if (cols % 2)
-                fgetc (ifd); /* padding */
+                PPM_PUTR(pixrow[col], fgetc(ifP));
+
+            if (cols % 2 != 0)
+                fgetc (ifP); /* padding */
+
             for (col = 0; col < cols; ++col)
-                PPM_PUTG(pixrow[col], fgetc(ifd));
+                PPM_PUTG(pixrow[col], fgetc(ifP));
+
             if (cols % 2)
-                fgetc (ifd); /* padding */
+                fgetc (ifP); /* padding */
+
             for (col = 0; col < cols; ++col)
-                PPM_PUTB(pixrow[col], fgetc(ifd));
-            if (cols % 2)
-                fgetc (ifd); /* padding */
+                PPM_PUTB(pixrow[col], fgetc(ifP));
+
+            if (cols % 2 != 0)
+                fgetc (ifP); /* padding */
+
             ppm_writeppmrow(stdout, pixrow, cols, maxval, 0);
         }
         ppm_freerow(pixrow);
     } else if (depth == 8) {
         /* 8-bit (color mapped) image */
         pixel * pixrow;
+        unsigned int row;
 
         ppm_writeppminit(stdout, cols, rows, (pixval) maxval, 0);
-        pixrow = ppm_allocrow( cols );
+
+        pixrow = ppm_allocrow(cols);
 
         for (row = 0; row < rows; ++row) {
+            unsigned int col;
+
             for (col = 0; col < cols; ++col)
-                pixrow[col] = colormap[fgetc(ifd)];
-            if (cols %2)
-                fgetc(ifd); /* padding */
+                pixrow[col] = colormap[fgetc(ifP)];
+
+            if (cols % 2 != 0)
+                fgetc(ifP); /* padding */
+
             ppm_writeppmrow(stdout, pixrow, cols, maxval, 0);
         }
         ppm_freerow(pixrow);
@@ -192,25 +211,28 @@ main(int argc, char * argv[]) {
         unsigned int row;
 
         pbm_writepbminit(stdout, cols, rows, 0);
+
         bitrow = pbm_allocrow(cols);
 
         for (row = 0; row < rows; ++row) {
+            unsigned int col;
             unsigned char bits;
-            bits = 0x00;  /* initial value */
-            for (col = 0; col < cols; ++col) {
+
+            for (col = 0, bits = 0x00; col < cols; ++col) {
                 int const shift = col % 8;
                 if (shift == 0)
-                    bits = (unsigned char) fgetc(ifd);
+                    bits = (unsigned char) fgetc(ifP);
                 bitrow[col] = (bits & (unsigned char)(0x01 << (7 - shift))) ?
                     PBM_WHITE : PBM_BLACK;
             }
-            if ((cols % 16) && (cols % 16) <= 8)
-                fgetc(ifd);  /* 16 bit pad */
+            if (cols % 16 != 0 && cols % 16 <= 8)
+                fgetc(ifP);  /* 16 bit pad */
+
             pbm_writepbmrow(stdout, bitrow, cols, 0);
         }
         pbm_freerow(bitrow);
     }
-    pm_close(ifd);
+    pm_close(ifP);
 
     return 0;
 }
