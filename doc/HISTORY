@@ -80,6 +80,11 @@ not yet  BJH  Release 11.17.00
               broken (rletopnm was new in Netpbm 9.0 (April 2000).  Found by
               Pranav Krishna with AFL++ with AddressSanitizer/UBSan.
 
+              leaftoppm: fix arbitrary memory access with truncated input
+              file.  Always broken (leaftoppm was new in Netpbm 9.3 (June
+              2000)).  Found by Pranav Krishna with AFL++ with
+              AddressSanitizer/UBSan.
+
               jbigtopnm: fix bug: fails with bogus error message about
               incremental BIE not continuing previous one when multi-BIE image
               is of certain dimension.  Always broken (jbigtopnm was new in
